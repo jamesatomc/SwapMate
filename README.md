@@ -45,10 +45,16 @@ $ forge snapshot
 $ anvil
 ```
 
-### Deploy Pool System
+### Deploy Pool System (USDK + Kanari + PoolManager)
 
 ```shell
-$ forge script script/Counter.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
+$ forge script script/DeploySystem.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
+```
+
+### Interact with Pool System
+
+```shell
+$ forge script script/InteractSystem.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
 ```
 
 ### Deploy Counter (Original)
