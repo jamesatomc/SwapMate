@@ -16,30 +16,29 @@ contract DeployDEX is Script {
         // Deploy tokens
         USDK usdk = new USDK();
         Kanari kanari = new Kanari();
-        
-    // Deploy pool
-    KanariUsdkPool pool = new KanariUsdkPool(address(usdk), address(kanari));
-    
-        
+
+        // Deploy pool
+        KanariUsdkPool pool = new KanariUsdkPool(
+            address(usdk),
+            address(kanari)
+        );
+
         vm.stopBroadcast();
-        
+
         // Log deployed addresses
         console.log("=== DEX Deployment Complete ===");
         console.log("USDK deployed at:", address(usdk));
         console.log("Kanari deployed at:", address(kanari));
-    console.log("Kanari-USDK Pool deployed at:", address(pool));
+        console.log("Kanari-USDK SWAP Pool deployed at:", address(pool));
 
-        
         // Log initial state
         console.log("\n=== Initial State ===");
         console.log("USDK total supply:", usdk.totalSupply());
         console.log("Kanari total supply:", kanari.totalSupply());
-       
-        
+
         console.log("\n=== Contract Addresses (Update in frontend) ===");
         console.log("USDK:", address(usdk));
         console.log("KANARI:", address(kanari));
-    console.log("POOL:", address(pool));
-
+        console.log("SWAP:", address(pool));
     }
 }

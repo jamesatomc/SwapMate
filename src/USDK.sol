@@ -22,8 +22,8 @@ contract USDK is ERC20, Ownable {
     constructor() ERC20("USD Kanari", "USDK") Ownable(msg.sender) {
         _decimals = 6; // USDC-like 6 decimals
         
-        // Mint initial supply to deployer
-        _mint(msg.sender, 1_000_000 * 10**_decimals); // 1M USDK
+        // // Mint initial supply to deployer
+        // _mint(msg.sender, 1_000_000 * 10**_decimals); // 1M USDK
         
         // Add deployer as initial minter
         minters[msg.sender] = true;

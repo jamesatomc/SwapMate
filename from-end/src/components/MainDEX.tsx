@@ -5,10 +5,11 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import SwapPage from './SwapPage';
 import AddLiquidityPage from './AddLiquidityPage';
 import RemoveLiquidityPage from './RemoveLiquidityPage';
+import MintPage from './MintPage';
 
 
 
-type Page = 'swap' | 'add' | 'remove';
+type Page = 'swap' | 'add' | 'remove' | 'mint';
 
 export default function MainDEX() {
   const [currentPage, setCurrentPage] = useState<Page>('swap');
@@ -62,6 +63,19 @@ export default function MainDEX() {
                 Remove Liquidity
               </button>
             </li>
+            <li>
+              <button 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                  currentPage === 'mint' 
+                    ? 'bg-blue-600 text-white shadow-lg' 
+                    : 'text-gray-300 hover:text-white hover:bg-slate-700'
+                }`}
+                onClick={() => setCurrentPage('mint')}
+              >
+                <span className="text-lg">💰</span>
+                Mint
+              </button>
+            </li>
           </ul>
           
           <div className="ml-4">
@@ -75,6 +89,7 @@ export default function MainDEX() {
         {currentPage === 'swap' && <SwapPage />}
         {currentPage === 'add' && <AddLiquidityPage />}
         {currentPage === 'remove' && <RemoveLiquidityPage />}
+        {currentPage === 'mint' && <MintPage />}
       </main>
     </div>
   );

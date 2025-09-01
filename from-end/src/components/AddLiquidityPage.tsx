@@ -128,15 +128,10 @@ export default function AddLiquidityPage() {
       await approveIfNeeded(CONTRACTS.USDK, CONTRACTS.SWAP, amountA, 6);
       await approveIfNeeded(CONTRACTS.KANARI, CONTRACTS.SWAP, amountB, 18);
       
-      // Add liquidity with 5% slippage tolerance
-      const minAmountA = amountABig * BigInt(95) / BigInt(100);
-      const minAmountB = amountBBig * BigInt(95) / BigInt(100);
-      
+      // Add liquidity (contract expects only amountA, amountB)
       const tx = await swapContract.addLiquidity(
         amountABig,
-        amountBBig,
-        minAmountA,
-        minAmountB
+        amountBBig
       );
       
       await tx.wait();

@@ -1,14 +1,16 @@
+Script ran successfully.
+
 == Logs ==
   === DEX Deployment Complete ===
-  USDK deployed at: 0xd463DFe36AFeaAeCf0f8b5e3e6cB67Afa4bc1b3a
-  Kanari deployed at: 0xA7b0E223e656EbbA9EE0fa05117D143F21D495b0
-  Kanari-USDK Pool deployed at: 0x3AEcb21C9D1176AbeF22E6bCd3f2F3e01d7050ff
+  USDK deployed at: 0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf
+  Kanari deployed at: 0x4DF06d3117e4228BBD6Cd76A73896ED4B0c77160
+  Kanari-USDK Pool deployed at: 0x5B45Cd9C1d75aF9a445bb208f294e2bF66d810B4
   
 === Initial State ===
-  USDK total supply: 1000000000000
-  Kanari total supply: 50000000000000000000000000
-
+  USDK total supply: 0
+  Kanari total supply: 0
+  
 === Contract Addresses (Update in frontend) ===
-  USDK: 0xd463DFe36AFeaAeCf0f8b5e3e6cB67Afa4bc1b3a
-  KANARI: 0xA7b0E223e656EbbA9EE0fa05117D143F21D495b0
-  POOL: 0x3AEcb21C9D1176AbeF22E6bCd3f2F3e01d7050ff
+  USDK: 0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf
+  KANARI: 0x4DF06d3117e4228BBD6Cd76A73896ED4B0c77160
+  POOL: 0x5B45Cd9C1d75aF9a445bb208f294e2bF66d810B4

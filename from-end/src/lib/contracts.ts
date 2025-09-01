@@ -1,11 +1,9 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
   // From InteractSystem deployment
-  USDK: "0xd463DFe36AFeaAeCf0f8b5e3e6cB67Afa4bc1b3a" as const,
-  KANARI: "0xA7b0E223e656EbbA9EE0fa05117D143F21D495b0" as const,
-  SWAP: "0x3AEcb21C9D1176AbeF22E6bCd3f2F3e01d7050ff" as const,
-  // ADD_LIQUIDITY: "0x3AEcb21C9D1176AbeF22E6bCd3f2F3e01d7050ff" as const,
-  // REMOVE_LIQUIDITY: "0x3AEcb21C9D1176AbeF22E6bCd3f2F3e01d7050ff" as const
+  USDK: "0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf" as const,
+  KANARI: "0x4DF06d3117e4228BBD6Cd76A73896ED4B0c77160" as const,
+  SWAP: "0x5B45Cd9C1d75aF9a445bb208f294e2bF66d810B4" as const,
 } as const;
 
 // ABI definitions for contracts

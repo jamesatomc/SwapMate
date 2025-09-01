@@ -8,7 +8,7 @@ import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 /// @notice Utility token with deflationary mechanics and staking rewards
 contract Kanari is ERC20, Ownable {
     uint8 private _decimals;
-    uint256 public constant MAX_SUPPLY = 100_000_000 * 10**18; // 100M tokens max
+    uint256 public constant MAX_SUPPLY = 11_000_000 * 10**18; // 11M tokens max
     uint256 public burnRate = 100; // 1% burn rate (100 basis points)
     uint256 public constant BASIS_POINTS = 10000;
     
@@ -31,9 +31,9 @@ contract Kanari is ERC20, Ownable {
     constructor() ERC20("Kanari Token", "KANARI") Ownable(msg.sender) {
         _decimals = 18;
         
-        // Mint initial supply to deployer (50M tokens)
-        uint256 initialSupply = 50_000_000 * 10**_decimals;
-        _mint(msg.sender, initialSupply);
+        // // Mint initial supply to deployer (50M tokens)
+        // uint256 initialSupply = 50_000_000 * 10**_decimals;
+        // _mint(msg.sender, initialSupply);
         
         // Exclude deployer and contract from burn
         excludedFromBurn[msg.sender] = true;
