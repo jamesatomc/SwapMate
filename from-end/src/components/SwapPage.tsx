@@ -111,12 +111,9 @@ export default function SwapPage() {
       const slippageBig = BigInt(Math.floor(Number(slippage) * 100));
       const minAmountOut = estimatedOutBig * (BigInt(10000) - slippageBig) / BigInt(10000);
       
-      let tx;
-      if (swapDirection === 'AtoB') {
-        tx = await swapContract.swapExactAForB(amountIn, minAmountOut);
-      } else {
-        tx = await swapContract.swapExactBForA(amountIn, minAmountOut);
-      }
+  // Contract exposes swap(tokenIn, amountIn, minAmountOut)
+  const tokenInAddress = tokenAddress;
+  const tx = await swapContract.swap(tokenInAddress, amountIn, minAmountOut);
       
       await tx.wait();
       alert('Swap successful!');
