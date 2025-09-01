@@ -51,7 +51,10 @@ $ anvil
 $ forge script script/DeployDEX.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
 ```
 
-
+### verify-contract-address
+```shell
+$ forge verify-contract --rpc-url https://explorer.testnet.alpenlabs.io/api/eth-rpc --verifier blockscout --verifier-url 'https://explorer.testnet.alpenlabs.io/api/' 0x1d1D334E3fe1c22B12D68af6B4Ffd8DFd4c1a5e7 src/Kanari.sol:Kanari --compiler-version 0.8.30
+```
 
 ### Deploy Counter (Original)
 
