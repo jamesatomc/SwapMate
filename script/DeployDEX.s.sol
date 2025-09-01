@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.30;
 
 import "lib/forge-std/src/Script.sol";
 
 import "src/USDK.sol";
 import "src/Kanari.sol";
+import "src/AddLiquidity.sol";
 
 /// @notice Script to deploy enhanced DEX system with swap functionality
 contract DeployDEX is Script {
@@ -15,6 +16,9 @@ contract DeployDEX is Script {
         // Deploy tokens
         USDK usdk = new USDK();
         Kanari kanari = new Kanari();
+        
+    // Deploy pool
+    KanariUsdkPool pool = new KanariUsdkPool(address(usdk), address(kanari));
     
         
         vm.stopBroadcast();
@@ -23,6 +27,7 @@ contract DeployDEX is Script {
         console.log("=== DEX Deployment Complete ===");
         console.log("USDK deployed at:", address(usdk));
         console.log("Kanari deployed at:", address(kanari));
+    console.log("Kanari-USDK Pool deployed at:", address(pool));
 
         
         // Log initial state
@@ -34,6 +39,7 @@ contract DeployDEX is Script {
         console.log("\n=== Contract Addresses (Update in frontend) ===");
         console.log("USDK:", address(usdk));
         console.log("KANARI:", address(kanari));
+    console.log("POOL:", address(pool));
 
     }
 }
