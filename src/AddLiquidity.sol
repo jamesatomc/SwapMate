@@ -3,9 +3,10 @@ pragma solidity ^0.8.30;
 
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 /// @title Simple AMM Pool (generic token pair)
 /// @notice Single-pool constant-product AMM for any two tokens (supports native via address(0)), with LP token, add/remove liquidity and swap
-contract ConstantProductAMM {
+contract ConstantProductAMM is ReentrancyGuard {
 	using SafeERC20 for IERC20;
 
 	// --- Minimal ERC20 for LP token ---
@@ -115,49 +116,55 @@ contract ConstantProductAMM {
 
 	/// @notice Add liquidity by providing both tokens. Caller must approve tokens first.
 	/// On first deposit, LP minted = sqrt(amountA * amountB)
-	function addLiquidity(uint256 amountA, uint256 amountB) external payable returns (uint256 lpMinted) {
+	function addLiquidity(
+		uint256 amountA,
+		uint256 amountB,
+		uint256 minAmountA,
+		uint256 minAmountB,
+		uint256 deadline
+	) external payable nonReentrant returns (uint256 lpMinted) {
+		require(block.timestamp <= deadline, "Deadline exceeded");
 		require(amountA > 0 && amountB > 0, "Amounts must be > 0");
 
-		(uint256 reserveA, uint256 reserveB) = getReserves();
-
-		// transfer tokens in; if a token is native, the user must send msg.value equal to that amount
+		// only one token may be native (constructor enforces this)
 		require(!(_isNative(tokenA) && _isNative(tokenB)), "Both tokens cannot be native");
 
-		if (_isNative(tokenA)) {
-			require(msg.value == amountA, "Incorrect native value for tokenA");
-			// getReserves already included msg.value, subtract it to simulate pre-transfer reserve
-			require(reserveA >= amountA, "Reserve underflow");
-			reserveA -= amountA;
-		} else {
-			// when tokenA is ERC20, ensure caller did not send native value
-			require(msg.value == 0 || !_isNative(tokenB), "Unexpected native value");
+		// compute reserves as they were before this call (msg.value is already included in address(this).balance)
+		uint256 reserveABefore = _isNative(tokenA) ? (address(this).balance - msg.value) : IERC20(tokenA).balanceOf(address(this));
+		uint256 reserveBBefore = _isNative(tokenB) ? (address(this).balance - msg.value) : IERC20(tokenB).balanceOf(address(this));
+
+		// expected native value: sum of native amounts for tokenA and tokenB (only one can be native)
+		uint256 expectedNative = 0;
+		if (_isNative(tokenA)) expectedNative += amountA;
+		if (_isNative(tokenB)) expectedNative += amountB;
+		require(msg.value == expectedNative, "Incorrect native value");
+
+		// pull ERC20 tokens (native amount already sent as msg.value)
+		if (!_isNative(tokenA)) {
 			IERC20(tokenA).safeTransferFrom(msg.sender, address(this), amountA);
 		}
-
-		if (_isNative(tokenB)) {
-			if (!_isNative(tokenA)) {
-				require(msg.value == amountB, "Incorrect native value for tokenB");
-			}
-			require(reserveB >= amountB, "Reserve underflow");
-			reserveB -= amountB;
-		} else {
-			// when tokenB is ERC20, ensure caller did not send native value
-			require(msg.value == 0 || !_isNative(tokenA), "Unexpected native value");
+		if (!_isNative(tokenB)) {
 			IERC20(tokenB).safeTransferFrom(msg.sender, address(this), amountB);
 		}
 
-		if (totalSupply() == 0) {
-			// initial liquidity
-			lpMinted = _sqrt(amountA * amountB);
+	if (totalSupply() == 0) {
+			// initial liquidity: compute product with explicit overflow check
+			uint256 product;
+			unchecked { product = amountA * amountB; }
+			require(amountA == 0 || product / amountA == amountB, "Multiplication overflow");
+			lpMinted = _sqrt(product);
 			require(lpMinted > 0, "Insufficient liquidity minted");
 			_mint(msg.sender, lpMinted);
 		} else {
-			// must provide proportional amounts
-			uint256 lpFromA = (amountA * totalSupply()) / reserveA;
-			uint256 lpFromB = (amountB * totalSupply()) / reserveB;
-			// mint based on the limiting ratio
+			// must provide proportional amounts based on reserves before this call
+			require(reserveABefore > 0 && reserveBBefore > 0, "Insufficient reserve");
+			uint256 lpFromA = (amountA * totalSupply()) / reserveABefore;
+			uint256 lpFromB = (amountB * totalSupply()) / reserveBBefore;
 			lpMinted = lpFromA < lpFromB ? lpFromA : lpFromB;
 			require(lpMinted > 0, "Insufficient liquidity minted");
+			// slippage protection: ensure provided amounts meet user's minimums
+			require(amountA >= minAmountA, "Insufficient amountA provided");
+			require(amountB >= minAmountB, "Insufficient amountB provided");
 			_mint(msg.sender, lpMinted);
 		}
 
@@ -165,7 +172,13 @@ contract ConstantProductAMM {
 	}
 
 	/// @notice Remove liquidity by burning LP tokens. Returns underlying tokens proportionally.
-	function removeLiquidity(uint256 lpAmount) external returns (uint256 amountA, uint256 amountB) {
+	function removeLiquidity(
+		uint256 lpAmount,
+		uint256 minAmountA,
+		uint256 minAmountB,
+		uint256 deadline
+	) external nonReentrant returns (uint256 amountA, uint256 amountB) {
+		require(block.timestamp <= deadline, "Deadline exceeded");
 		require(lpAmount > 0, "LP amount must be > 0");
 		uint256 supply = totalSupply();
 		require(supply > 0, "No liquidity");
@@ -174,6 +187,9 @@ contract ConstantProductAMM {
 
 		amountA = (reserveA * lpAmount) / supply;
 		amountB = (reserveB * lpAmount) / supply;
+
+	require(amountA >= minAmountA, "AmountA too low");
+	require(amountB >= minAmountB, "AmountB too low");
 
 		_burn(msg.sender, lpAmount);
 
@@ -197,44 +213,43 @@ contract ConstantProductAMM {
 
 	/// @notice Swap tokenIn -> tokenOut using constant product formula with fee
 	/// Caller must approve tokenIn to this contract. If tokenIn is native, send native value with the call.
-	function swap(address tokenIn, uint256 amountIn, uint256 minAmountOut) external payable returns (uint256 amountOut) {
+	function swap(address tokenIn, uint256 amountIn, uint256 minAmountOut, uint256 deadline) external payable nonReentrant returns (uint256 amountOut) {
+		require(block.timestamp <= deadline, "Deadline exceeded");
 		require(amountIn > 0, "amountIn must be > 0");
 		require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
 
 		bool isA = tokenIn == tokenA;
-		address inTokenAddr = isA ? tokenA : tokenB;
-		address outTokenAddr = isA ? tokenB : tokenA;
 
 		(uint256 reserveA, uint256 reserveB) = getReserves();
-		uint256 reserveIn = isA ? reserveA : reserveB;
-		uint256 reserveOut = isA ? reserveB : reserveA;
+		uint256 reserveInBefore = isA ? reserveA : reserveB;
 
-		// transfer in (handle native vs ERC20). For native, msg.value must equal amountIn.
-		if (_isNative(inTokenAddr)) {
+		// handle input transfer / native handling
+		if (_isNative(tokenIn)) {
 			require(msg.value == amountIn, "Incorrect msg.value for native input");
-			// getReserves included msg.value, but reserveIn variable is the current balance; to compute output we need pre-transfer reserve
-			reserveIn = reserveIn >= amountIn ? reserveIn - amountIn : 0;
+			require(reserveInBefore >= amountIn, "Reserve underflow");
+			reserveInBefore = reserveInBefore - amountIn;
 		} else {
 			require(msg.value == 0, "Unexpected native value");
-			IERC20(inTokenAddr).safeTransferFrom(msg.sender, address(this), amountIn);
+			IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
 		}
 
+		uint256 reserveOut = isA ? reserveB : reserveA;
 		uint256 amountInWithFee = amountIn * (BPS - feeBps);
 		uint256 numerator = amountInWithFee * reserveOut;
-		uint256 denominator = (reserveIn * BPS) + amountInWithFee;
+		uint256 denominator = (reserveInBefore * BPS) + amountInWithFee;
 		amountOut = numerator / denominator;
 
 		require(amountOut >= minAmountOut, "INSUFFICIENT_OUTPUT_AMOUNT");
 
-		// transfer out
-		if (_isNative(outTokenAddr)) {
+		address outToken = isA ? tokenB : tokenA;
+		if (_isNative(outToken)) {
 			(bool sent, ) = payable(msg.sender).call{value: amountOut}("");
 			require(sent, "Native transfer failed");
 		} else {
-			IERC20(outTokenAddr).safeTransfer(msg.sender, amountOut);
+			IERC20(outToken).safeTransfer(msg.sender, amountOut);
 		}
 
-		emit Swap(msg.sender, tokenIn, amountIn, outTokenAddr, amountOut);
+		emit Swap(msg.sender, tokenIn, amountIn, outToken, amountOut);
 	}
 
 	// allow contract to receive native tokens
@@ -246,14 +261,25 @@ contract ConstantProductAMM {
 	}
 
 	// --- Math helpers ---
-	function _sqrt(uint256 y) internal pure returns (uint256 z) {
-		if (y == 0) return 0;
-		uint256 x = y / 2 + 1;
-		z = y;
-		while (x < z) {
-			z = x;
-			x = (y / x + x) / 2;
-		}
+	function _sqrt(uint256 x) internal pure returns (uint256 z) {
+		if (x == 0) return 0;
+		// Initial estimate via bit length
+		uint256 r = 1;
+		uint256 xx = x;
+		if (xx >= 0x100000000000000000000000000000000) { xx >>= 128; r <<= 64; }
+		if (xx >= 0x10000000000000000) { xx >>= 64; r <<= 32; }
+		if (xx >= 0x100000000) { xx >>= 32; r <<= 16; }
+		if (xx >= 0x10000) { xx >>= 16; r <<= 8; }
+		if (xx >= 0x100) { xx >>= 8; r <<= 4; }
+		if (xx >= 0x10) { xx >>= 4; r <<= 2; }
+		if (xx >= 0x8) { r <<= 1; }
+		// Newton iterations (3-4 iterations is enough for 256-bit numbers)
+		z = r;
+		z = (z + x / z) >> 1;
+		z = (z + x / z) >> 1;
+		z = (z + x / z) >> 1;
+		uint256 z2 = x / z;
+		if (z2 < z) z = z2;
 	}
 }
 
