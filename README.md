@@ -45,10 +45,16 @@ $ forge snapshot
 $ anvil
 ```
 
-### Deploy
+### Deploy Pool System
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+$ forge script script/Counter.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
+```
+
+### Deploy Counter (Original)
+
+```shell
+$ forge script script/Counter.s.sol:CounterScript --rpc-url https://rpc.testnet.alpenlabs.io --private-key <your_private_key>
 ```
 
 ### Cast
