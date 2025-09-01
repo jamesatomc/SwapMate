@@ -17,20 +17,20 @@ export default function MainDEX() {
   const [currentPage, setCurrentPage] = useState<Page>('swap');
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-[var(--background)]">
       {/* Navigation Bar */}
-      <nav className="bg-slate-800 border-b border-slate-700 px-4 py-3">
+      <nav className="bg-[var(--surface)] border-b border-gray-200 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="text-2xl font-bold text-white flex items-center gap-2">
-            🦄 <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">SwapMate</span>
+          <div className="text-2xl font-bold text-[var(--text-color)] flex items-center gap-2">
+            🦄 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600">SwapMate</span>
           </div>
 
           <ul className="flex items-center space-x-1">
             <li>
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'swap'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-gray-300 hover:text-white hover:bg-slate-700'
+                    ? 'bg-[var(--primary-color)] text-white shadow'
+                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
                   }`}
                 onClick={() => setCurrentPage('swap')}
               >
@@ -41,8 +41,8 @@ export default function MainDEX() {
             <li>
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'add'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-gray-300 hover:text-white hover:bg-slate-700'
+                    ? 'bg-[var(--primary-color)] text-white shadow'
+                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
                   }`}
                 onClick={() => setCurrentPage('add')}
               >
@@ -53,8 +53,8 @@ export default function MainDEX() {
             <li>
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'remove'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-gray-300 hover:text-white hover:bg-slate-700'
+                    ? 'bg-[var(--primary-color)] text-white shadow'
+                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
                   }`}
                 onClick={() => setCurrentPage('remove')}
               >
@@ -65,8 +65,8 @@ export default function MainDEX() {
             <li>
               <button
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'mint'
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'text-gray-300 hover:text-white hover:bg-slate-700'
+                    ? 'bg-[var(--primary-color)] text-white shadow'
+                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
                   }`}
                 onClick={() => setCurrentPage('mint')}
               >
@@ -77,13 +77,15 @@ export default function MainDEX() {
           </ul>
 
           <div className="ml-4">
-            <ConnectButton />
+            <div className="rounded-md bg-[var(--surface)] p-1">
+              <ConnectButton />
+            </div>
           </div>
         </div>
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+  <main className="max-w-4xl mx-auto px-4 py-8">
         {currentPage === 'swap' && <SwapPage />}
         {currentPage === 'add' && <AddLiquidityPage />}
   {currentPage === 'remove' && <RemoveLiquidityPage />}

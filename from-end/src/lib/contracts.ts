@@ -164,40 +164,27 @@ export const KANARI_ABI = [
 ] as const;
 
 export const SWAP_ABI = [
+  // ERC20 LP Token functions
   {
     "type": "function",
-    "name": "getReserves",
+    "name": "name",
     "inputs": [],
-    "outputs": [{"type": "uint256", "name": "reserveA"}, {"type": "uint256", "name": "reserveB"}],
+    "outputs": [{"type": "string", "name": ""}],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "addLiquidity",
-    "inputs": [
-      {"type": "uint256", "name": "amountA"},
-      {"type": "uint256", "name": "amountB"}
-    ],
-    "outputs": [{"type": "uint256", "name": "lpMinted"}],
-  "stateMutability": "payable"
+    "name": "symbol", 
+    "inputs": [],
+    "outputs": [{"type": "string", "name": ""}],
+    "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "removeLiquidity",
-    "inputs": [{"type": "uint256", "name": "lpAmount"}],
-    "outputs": [{"type": "uint256", "name": "amountA"}, {"type": "uint256", "name": "amountB"}],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "swap",
-    "inputs": [
-      {"type": "address", "name": "tokenIn"},
-      {"type": "uint256", "name": "amountIn"},
-      {"type": "uint256", "name": "minAmountOut"}
-    ],
-    "outputs": [{"type": "uint256", "name": "amountOut"}],
-  "stateMutability": "payable"
+    "name": "decimals",
+    "inputs": [],
+    "outputs": [{"type": "uint8", "name": ""}],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -209,9 +196,172 @@ export const SWAP_ABI = [
   {
     "type": "function",
     "name": "balanceOf",
-    "inputs": [{"type": "address", "name": "account"}],
+    "inputs": [{"type": "address", "name": "who"}],
     "outputs": [{"type": "uint256", "name": ""}],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "allowance",
+    "inputs": [
+      {"type": "address", "name": "owner_"},
+      {"type": "address", "name": "spender"}
+    ],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "approve",
+    "inputs": [
+      {"type": "address", "name": "spender"},
+      {"type": "uint256", "name": "amount"}
+    ],
+    "outputs": [{"type": "bool", "name": ""}],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transfer",
+    "inputs": [
+      {"type": "address", "name": "to"},
+      {"type": "uint256", "name": "amount"}
+    ],
+    "outputs": [{"type": "bool", "name": ""}],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferFrom",
+    "inputs": [
+      {"type": "address", "name": "from"},
+      {"type": "address", "name": "to"},
+      {"type": "uint256", "name": "amount"}
+    ],
+    "outputs": [{"type": "bool", "name": ""}],
+    "stateMutability": "nonpayable"
+  },
+  // AMM Core functions
+  {
+    "type": "function",
+    "name": "tokenA",
+    "inputs": [],
+    "outputs": [{"type": "address", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tokenB",
+    "inputs": [],
+    "outputs": [{"type": "address", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "feeBps",
+    "inputs": [],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getReserves",
+    "inputs": [],
+    "outputs": [
+      {"type": "uint256", "name": "reserveA"},
+      {"type": "uint256", "name": "reserveB"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "addLiquidity",
+    "inputs": [
+      {"type": "uint256", "name": "amountA"},
+      {"type": "uint256", "name": "amountB"},
+      {"type": "uint256", "name": "minAmountA"},
+      {"type": "uint256", "name": "minAmountB"},
+      {"type": "uint256", "name": "deadline"}
+    ],
+    "outputs": [{"type": "uint256", "name": "lpMinted"}],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "removeLiquidity",
+    "inputs": [
+      {"type": "uint256", "name": "lpAmount"},
+      {"type": "uint256", "name": "minAmountA"},
+      {"type": "uint256", "name": "minAmountB"},
+      {"type": "uint256", "name": "deadline"}
+    ],
+    "outputs": [
+      {"type": "uint256", "name": "amountA"},
+      {"type": "uint256", "name": "amountB"}
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "swap",
+    "inputs": [
+      {"type": "address", "name": "tokenIn"},
+      {"type": "uint256", "name": "amountIn"},
+      {"type": "uint256", "name": "minAmountOut"},
+      {"type": "uint256", "name": "deadline"}
+    ],
+    "outputs": [{"type": "uint256", "name": "amountOut"}],
+    "stateMutability": "payable"
+  },
+  // Events
+  {
+    "type": "event",
+    "name": "Transfer",
+    "inputs": [
+      {"type": "address", "name": "from", "indexed": true},
+      {"type": "address", "name": "to", "indexed": true},
+      {"type": "uint256", "name": "value", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Approval",
+    "inputs": [
+      {"type": "address", "name": "owner", "indexed": true},
+      {"type": "address", "name": "spender", "indexed": true},
+      {"type": "uint256", "name": "value", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LiquidityAdded",
+    "inputs": [
+      {"type": "address", "name": "provider", "indexed": true},
+      {"type": "uint256", "name": "amountA", "indexed": false},
+      {"type": "uint256", "name": "amountB", "indexed": false},
+      {"type": "uint256", "name": "lpMinted", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "LiquidityRemoved",
+    "inputs": [
+      {"type": "address", "name": "provider", "indexed": true},
+      {"type": "uint256", "name": "amountA", "indexed": false},
+      {"type": "uint256", "name": "amountB", "indexed": false},
+      {"type": "uint256", "name": "lpBurned", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Swap",
+    "inputs": [
+      {"type": "address", "name": "trader", "indexed": true},
+      {"type": "address", "name": "tokenIn", "indexed": false},
+      {"type": "uint256", "name": "amountIn", "indexed": false},
+      {"type": "address", "name": "tokenOut", "indexed": false},
+      {"type": "uint256", "name": "amountOut", "indexed": false}
+    ]
   }
 ] as const;
 

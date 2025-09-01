@@ -91,7 +91,7 @@ contract ConstantProductAMM is ReentrancyGuard {
 
 	event LiquidityAdded(address indexed provider, uint256 amountA, uint256 amountB, uint256 lpMinted);
 	event LiquidityRemoved(address indexed provider, uint256 amountA, uint256 amountB, uint256 lpBurned);
-	event Swap(address indexed trader, address tokenIn, uint256 amountIn, address tokenOut, uint256 amountOut);
+	event Swap(address indexed trader, address tokenIn, uint256 amountIn, address tokenOut, uint256 amountOut, uint256 fee);
 	event FeeUpdated(uint256 newFeeBps);
 
 	constructor(address _tokenA, address _tokenB) {
@@ -225,6 +225,8 @@ contract ConstantProductAMM is ReentrancyGuard {
 
 		// handle input transfer / native handling
 		if (_isNative(tokenIn)) {
+			// ensure caller provided sufficient native value and exactly amountIn is intended
+			require(msg.value >= amountIn, "Insufficient native value");
 			require(msg.value == amountIn, "Incorrect msg.value for native input");
 			require(reserveInBefore >= amountIn, "Reserve underflow");
 			reserveInBefore = reserveInBefore - amountIn;
@@ -233,11 +235,8 @@ contract ConstantProductAMM is ReentrancyGuard {
 			IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
 		}
 
-		uint256 reserveOut = isA ? reserveB : reserveA;
-		uint256 amountInWithFee = amountIn * (BPS - feeBps);
-		uint256 numerator = amountInWithFee * reserveOut;
-		uint256 denominator = (reserveInBefore * BPS) + amountInWithFee;
-		amountOut = numerator / denominator;
+		// compute amountOut inline to reduce stack locals
+		amountOut = (amountIn * (BPS - feeBps) * (isA ? reserveB : reserveA)) / ((reserveInBefore * BPS) + (amountIn * (BPS - feeBps)));
 
 		require(amountOut >= minAmountOut, "INSUFFICIENT_OUTPUT_AMOUNT");
 
@@ -249,7 +248,38 @@ contract ConstantProductAMM is ReentrancyGuard {
 			IERC20(outToken).safeTransfer(msg.sender, amountOut);
 		}
 
-		emit Swap(msg.sender, tokenIn, amountIn, outToken, amountOut);
+		// compute fee inline when emitting to reduce locals (guard against division by zero)
+		emit Swap(
+			msg.sender,
+			tokenIn,
+			amountIn,
+			outToken,
+			amountOut,
+			feeBps > 0 && (BPS - feeBps) > 0 ? amountIn - ((amountOut * BPS) / (BPS - feeBps)) : 0
+		);
+	}
+
+	/// @notice View helper to estimate output amount for a given input and token
+	function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256 amountOut) {
+		require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
+
+		bool isA = tokenIn == tokenA;
+		(uint256 reserveA, uint256 reserveB) = getReserves();
+		uint256 reserveIn = isA ? reserveA : reserveB;
+		uint256 reserveOut = isA ? reserveB : reserveA;
+
+		uint256 amountInWithFee = amountIn * (BPS - feeBps);
+		uint256 numerator = amountInWithFee * reserveOut;
+		uint256 denominator = (reserveIn * BPS) + amountInWithFee;
+		amountOut = numerator / denominator;
+	}
+
+	/// @notice View helper to estimate price impact in basis points for a given trade
+	function getPriceImpact(uint256 amountIn, address tokenIn) external view returns (uint256 impactBps) {
+		uint256 amountOut = this.getAmountOut(amountIn, tokenIn);
+		uint256 expectedOut = (amountIn * (BPS - feeBps)) / BPS;
+		if (expectedOut == 0) return 0;
+		impactBps = ((expectedOut - amountOut) * BPS) / expectedOut;
 	}
 
 	// allow contract to receive native tokens

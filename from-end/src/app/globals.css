@@ -2,18 +2,19 @@
 
 /* Custom CSS Variables */
 :root {
-  --primary-color: #3b82f6;
-  --secondary-color: #1e40af;
+  --primary-color: #2563eb; /* blue-600 */
+  --secondary-color: #1e3a8a; /* blue-800 */
   --success-color: #10b981;
   --warning-color: #f59e0b;
   --error-color: #ef4444;
-  --background: #0f172a;
-  --surface: #1e293b;
-  --surface-hover: #334155;
+  --background: #f8fafc; /* slate-50 */
+  --surface: #ffffff; /* white card surfaces */
+  --surface-hover: #f1f5f9; /* gray-100 */
+  --text-color: #0f172a; /* slate-900 */
 }
 
 /* Base body styling */
 body {
-  background-color: #0f172a;
-  color: white;
+  background-color: var(--background);
+  color: var(--text-color);
 }
