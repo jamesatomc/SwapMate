@@ -3,14 +3,14 @@ pragma solidity ^0.8.30;
 
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-/// @title Simple AMM Pool for KANARI <-> USDK
-/// @notice Single-pool constant-product AMM with LP token, add/remove liquidity and swap
-contract KanariUsdkPool {
+/// @title Simple AMM Pool (generic token pair)
+/// @notice Single-pool constant-product AMM for any two tokens (supports native via address(0)), with LP token, add/remove liquidity and swap
+contract ConstantProductAMM {
 	using SafeERC20 for IERC20;
 
 	// --- Minimal ERC20 for LP token ---
-	string public name = "Kanari-USDK LP";
-	string public symbol = "KUSD-LP";
+	string public name = "AMM LP Token";
+	string public symbol = "AMM-LP";
 	uint8 public decimals = 18;
 
 	uint256 private _totalSupply;
@@ -80,8 +80,9 @@ contract KanariUsdkPool {
 		_;
 	}
 
-	IERC20 public immutable tokenA; // USDK
-	IERC20 public immutable tokenB; // KANARI
+	// token address; use address(0) to indicate native chain coin (ETH/BNB/...)
+	address public immutable tokenA; // USDK or native (address(0))
+	address public immutable tokenB; // KANARI or native (address(0))
 
 	// fee in basis points (out of 10000). e.g. 30 = 0.3%
 	uint256 public feeBps = 30;
@@ -93,28 +94,57 @@ contract KanariUsdkPool {
 	event FeeUpdated(uint256 newFeeBps);
 
 	constructor(address _tokenA, address _tokenB) {
-		require(_tokenA != address(0) && _tokenB != address(0), "Invalid token addresses");
-		tokenA = IERC20(_tokenA);
-		tokenB = IERC20(_tokenB);
+		// allow one of the tokens to be the native coin (address(0)), but not both
+		require(!(_tokenA == address(0) && _tokenB == address(0)), "Both tokens cannot be native");
+		tokenA = _tokenA;
+		tokenB = _tokenB;
 		owner = msg.sender;
 	}
 
 	/// @notice View reserves in the pool
+	// helper to check native token
+	function _isNative(address token) internal pure returns (bool) {
+		return token == address(0);
+	}
+
+	// safe balance reader that supports native coin
 	function getReserves() public view returns (uint256 reserveA, uint256 reserveB) {
-		reserveA = tokenA.balanceOf(address(this));
-		reserveB = tokenB.balanceOf(address(this));
+		reserveA = _isNative(tokenA) ? address(this).balance : IERC20(tokenA).balanceOf(address(this));
+		reserveB = _isNative(tokenB) ? address(this).balance : IERC20(tokenB).balanceOf(address(this));
 	}
 
 	/// @notice Add liquidity by providing both tokens. Caller must approve tokens first.
 	/// On first deposit, LP minted = sqrt(amountA * amountB)
-	function addLiquidity(uint256 amountA, uint256 amountB) external returns (uint256 lpMinted) {
+	function addLiquidity(uint256 amountA, uint256 amountB) external payable returns (uint256 lpMinted) {
 		require(amountA > 0 && amountB > 0, "Amounts must be > 0");
 
 		(uint256 reserveA, uint256 reserveB) = getReserves();
 
-		// transfer tokens in
-		tokenA.safeTransferFrom(msg.sender, address(this), amountA);
-		tokenB.safeTransferFrom(msg.sender, address(this), amountB);
+		// transfer tokens in; if a token is native, the user must send msg.value equal to that amount
+		require(!(_isNative(tokenA) && _isNative(tokenB)), "Both tokens cannot be native");
+
+		if (_isNative(tokenA)) {
+			require(msg.value == amountA, "Incorrect native value for tokenA");
+			// getReserves already included msg.value, subtract it to simulate pre-transfer reserve
+			require(reserveA >= amountA, "Reserve underflow");
+			reserveA -= amountA;
+		} else {
+			// when tokenA is ERC20, ensure caller did not send native value
+			require(msg.value == 0 || !_isNative(tokenB), "Unexpected native value");
+			IERC20(tokenA).safeTransferFrom(msg.sender, address(this), amountA);
+		}
+
+		if (_isNative(tokenB)) {
+			if (!_isNative(tokenA)) {
+				require(msg.value == amountB, "Incorrect native value for tokenB");
+			}
+			require(reserveB >= amountB, "Reserve underflow");
+			reserveB -= amountB;
+		} else {
+			// when tokenB is ERC20, ensure caller did not send native value
+			require(msg.value == 0 || !_isNative(tokenA), "Unexpected native value");
+			IERC20(tokenB).safeTransferFrom(msg.sender, address(this), amountB);
+		}
 
 		if (totalSupply() == 0) {
 			// initial liquidity
@@ -147,29 +177,47 @@ contract KanariUsdkPool {
 
 		_burn(msg.sender, lpAmount);
 
-		// transfer underlying
-		tokenA.safeTransfer(msg.sender, amountA);
-		tokenB.safeTransfer(msg.sender, amountB);
+		// transfer underlying, handle native coin
+		if (_isNative(tokenA)) {
+			(bool sent, ) = payable(msg.sender).call{value: amountA}("");
+			require(sent, "Native transfer failed");
+		} else {
+			IERC20(tokenA).safeTransfer(msg.sender, amountA);
+		}
+
+		if (_isNative(tokenB)) {
+			(bool sent, ) = payable(msg.sender).call{value: amountB}("");
+			require(sent, "Native transfer failed");
+		} else {
+			IERC20(tokenB).safeTransfer(msg.sender, amountB);
+		}
 
 		emit LiquidityRemoved(msg.sender, amountA, amountB, lpAmount);
 	}
 
 	/// @notice Swap tokenIn -> tokenOut using constant product formula with fee
-	/// Caller must approve tokenIn to this contract.
-	function swap(address tokenIn, uint256 amountIn, uint256 minAmountOut) external returns (uint256 amountOut) {
+	/// Caller must approve tokenIn to this contract. If tokenIn is native, send native value with the call.
+	function swap(address tokenIn, uint256 amountIn, uint256 minAmountOut) external payable returns (uint256 amountOut) {
 		require(amountIn > 0, "amountIn must be > 0");
-		require(tokenIn == address(tokenA) || tokenIn == address(tokenB), "Invalid tokenIn");
+		require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
 
-		bool isA = tokenIn == address(tokenA);
-		IERC20 inToken = isA ? tokenA : tokenB;
-		IERC20 outToken = isA ? tokenB : tokenA;
+		bool isA = tokenIn == tokenA;
+		address inTokenAddr = isA ? tokenA : tokenB;
+		address outTokenAddr = isA ? tokenB : tokenA;
 
 		(uint256 reserveA, uint256 reserveB) = getReserves();
 		uint256 reserveIn = isA ? reserveA : reserveB;
 		uint256 reserveOut = isA ? reserveB : reserveA;
 
-		// transfer in
-		inToken.safeTransferFrom(msg.sender, address(this), amountIn);
+		// transfer in (handle native vs ERC20). For native, msg.value must equal amountIn.
+		if (_isNative(inTokenAddr)) {
+			require(msg.value == amountIn, "Incorrect msg.value for native input");
+			// getReserves included msg.value, but reserveIn variable is the current balance; to compute output we need pre-transfer reserve
+			reserveIn = reserveIn >= amountIn ? reserveIn - amountIn : 0;
+		} else {
+			require(msg.value == 0, "Unexpected native value");
+			IERC20(inTokenAddr).safeTransferFrom(msg.sender, address(this), amountIn);
+		}
 
 		uint256 amountInWithFee = amountIn * (BPS - feeBps);
 		uint256 numerator = amountInWithFee * reserveOut;
@@ -179,12 +227,18 @@ contract KanariUsdkPool {
 		require(amountOut >= minAmountOut, "INSUFFICIENT_OUTPUT_AMOUNT");
 
 		// transfer out
-		outToken.safeTransfer(msg.sender, amountOut);
+		if (_isNative(outTokenAddr)) {
+			(bool sent, ) = payable(msg.sender).call{value: amountOut}("");
+			require(sent, "Native transfer failed");
+		} else {
+			IERC20(outTokenAddr).safeTransfer(msg.sender, amountOut);
+		}
 
-		emit Swap(msg.sender, tokenIn, amountIn, address(outToken), amountOut);
+		emit Swap(msg.sender, tokenIn, amountIn, outTokenAddr, amountOut);
 	}
 
-	/// @notice Owner can update fee (in bps)
+	// allow contract to receive native tokens
+	receive() external payable {}
 	function setFeeBps(uint256 newFee) external onlyOwner {
 		require(newFee <= 500, "Fee too high"); // max 5%
 		feeBps = newFee;

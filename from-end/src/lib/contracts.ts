@@ -3,7 +3,7 @@ export const CONTRACTS = {
   // From InteractSystem deployment
   USDK: "0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf" as const,
   KANARI: "0x4DF06d3117e4228BBD6Cd76A73896ED4B0c77160" as const,
-  SWAP: "0x5B45Cd9C1d75aF9a445bb208f294e2bF66d810B4" as const,
+  SWAP: "0x417F82E4F39893eA70612B774A8aeaEf6E1a1FC7" as const,
 } as const;
 
 // ABI definitions for contracts
@@ -179,7 +179,7 @@ export const SWAP_ABI = [
       {"type": "uint256", "name": "amountB"}
     ],
     "outputs": [{"type": "uint256", "name": "lpMinted"}],
-    "stateMutability": "nonpayable"
+  "stateMutability": "payable"
   },
   {
     "type": "function",
@@ -197,7 +197,7 @@ export const SWAP_ABI = [
       {"type": "uint256", "name": "minAmountOut"}
     ],
     "outputs": [{"type": "uint256", "name": "amountOut"}],
-    "stateMutability": "nonpayable"
+  "stateMutability": "payable"
   },
   {
     "type": "function",

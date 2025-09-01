@@ -1,138 +1,196 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI } from '@/lib/contracts';
 
 export default function RemoveLiquidityPage() {
   const { address, isConnected } = useAccount();
-  const [lpAmount, setLpAmount] = useState('');
-  const [percentage, setPercentage] = useState('25');
+
   const [lpBalance, setLpBalance] = useState<string | null>(null);
-  const [reserves, setReserves] = useState<{ a: bigint; b: bigint } | null>(null);
+  const [totalSupply, setTotalSupply] = useState<string | null>(null);
+  const [reserveA, setReserveA] = useState<string | null>(null);
+  const [reserveB, setReserveB] = useState<string | null>(null);
+  const [tokenASymbol, setTokenASymbol] = useState('USDK');
+  const [tokenBSymbol, setTokenBSymbol] = useState('KANARI');
+  const [tokenADecimals, setTokenADecimals] = useState<number>(6);
+  const [tokenBDecimals, setTokenBDecimals] = useState<number>(18);
+  const [tokenAAddr, setTokenAAddr] = useState<string>(CONTRACTS.USDK);
+  const [tokenBAddr, setTokenBAddr] = useState<string>(CONTRACTS.KANARI);
+  const [showCustomA, setShowCustomA] = useState(false);
+  const [showCustomB, setShowCustomB] = useState(false);
+  const [customA, setCustomA] = useState('');
+  const [customB, setCustomB] = useState('');
+  const [estimateAvailable, setEstimateAvailable] = useState(true);
+
+  const PRESET_TOKENS = [
+    { label: 'USDK', addr: CONTRACTS.USDK, symbol: 'USDK', decimals: 6 },
+    { label: 'KANARI', addr: CONTRACTS.KANARI, symbol: 'KANARI', decimals: 18 },
+    { label: 'sBTC', addr: 'NATIVE', symbol: 'sBTC', decimals: 18, isNative: true },
+  ];
+
+  const [lpToBurn, setLpToBurn] = useState('');
   const [estimatedA, setEstimatedA] = useState<string | null>(null);
   const [estimatedB, setEstimatedB] = useState<string | null>(null);
-  const [totalSupply, setTotalSupply] = useState<bigint | null>(null);
+  const [rawReserveA, setRawReserveA] = useState<string | null>(null);
+  const [rawReserveB, setRawReserveB] = useState<string | null>(null);
+  const [rawTotalSupply, setRawTotalSupply] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (address && isConnected) {
-      loadBalances();
-      loadReserves();
-      loadTotalSupply();
-    }
-  }, [address, isConnected]);
+  useEffect(() => { if (address && isConnected) loadAll(); }, [address, isConnected]);
 
-  useEffect(() => {
-    if (lpAmount && reserves && totalSupply && Number(lpAmount) > 0) {
-      calculateEstimatedWithdraw();
-    } else {
-      setEstimatedA(null);
-      setEstimatedB(null);
-    }
-  }, [lpAmount, reserves, totalSupply]);
-
-  useEffect(() => {
-    if (lpBalance && Number(percentage) > 0) {
-      const calculatedLP = (Number(lpBalance) * Number(percentage) / 100).toString();
-      setLpAmount(calculatedLP);
-    }
-  }, [percentage, lpBalance]);
-
-  async function loadBalances() {
+  async function loadAll() {
     if (!address) return;
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const swapContract = new ethers.Contract(CONTRACTS.SWAP, SWAP_ABI as any, provider);
-      
-      const lpBal = await swapContract.balanceOf(address);
+      const swap = new ethers.Contract(CONTRACTS.SWAP, SWAP_ABI as any, provider);
+
+      // read reserves, totalSupply, user LP
+      const [reserves, tSupply, lpBal] = await Promise.all([
+        swap.getReserves(),
+        swap.totalSupply(),
+        swap.balanceOf(address),
+      ]);
+
+      // determine selected token decimals/symbols
+      let decA_n = tokenADecimals;
+      let decB_n = tokenBDecimals;
+      try {
+        if (tokenAAddr === 'NATIVE') {
+          const preset = PRESET_TOKENS.find(t => t.addr === 'NATIVE');
+          decA_n = preset?.decimals ?? 18;
+          setTokenASymbol(preset?.symbol || 'NATIVE');
+        } else {
+          const tA = new ethers.Contract(tokenAAddr, USDK_ABI as any, provider);
+          decA_n = Number(await tA.decimals());
+          try { setTokenASymbol(await tA.symbol()); } catch { /* ignore */ }
+        }
+      } catch (e) { console.warn('failed to read token A metadata', e); }
+
+      try {
+        if (tokenBAddr === 'NATIVE') {
+          const preset = PRESET_TOKENS.find(t => t.addr === 'NATIVE');
+          decB_n = preset?.decimals ?? 18;
+          setTokenBSymbol(preset?.symbol || 'NATIVE');
+        } else {
+          const tB = new ethers.Contract(tokenBAddr, USDK_ABI as any, provider);
+          decB_n = Number(await tB.decimals());
+          try { setTokenBSymbol(await tB.symbol()); } catch { /* ignore */ }
+        }
+      } catch (e) { console.warn('failed to read token B metadata', e); }
+
+      setTokenADecimals(decA_n);
+      setTokenBDecimals(decB_n);
+
+      // store raw bigints as strings for precise math
+      setRawReserveA(reserves.reserveA.toString());
+      setRawReserveB(reserves.reserveB.toString());
+      setRawTotalSupply(tSupply.toString());
+
+      // contract reserves are reserveA/reserveB in the pair's token order (USDK/KANARI expected)
+      // map them to the tokens the user selected when possible
+      if (tokenAAddr === CONTRACTS.USDK && tokenBAddr === CONTRACTS.KANARI) {
+        // normal order
+        setReserveA(ethers.formatUnits(reserves.reserveA, decA_n));
+        setReserveB(ethers.formatUnits(reserves.reserveB, decB_n));
+        setEstimateAvailable(true);
+      } else if (tokenAAddr === CONTRACTS.KANARI && tokenBAddr === CONTRACTS.USDK) {
+        // reversed order
+        setReserveA(ethers.formatUnits(reserves.reserveB, decA_n));
+        setReserveB(ethers.formatUnits(reserves.reserveA, decB_n));
+        setEstimateAvailable(true);
+      } else {
+        // unknown mapping - still show raw reserves but mark estimates unavailable
+        setReserveA(ethers.formatUnits(reserves.reserveA, decA_n));
+        setReserveB(ethers.formatUnits(reserves.reserveB, decB_n));
+        setEstimateAvailable(false);
+      }
+
+      setTotalSupply(ethers.formatUnits(tSupply, 18));
       setLpBalance(ethers.formatUnits(lpBal, 18));
-    } catch (error) {
-      console.error('Error loading LP balance:', error);
+
+      // reset estimates
+      setEstimatedA(null);
+      setEstimatedB(null);
+    } catch (err) {
+      console.error('loadAll removeLiquidity failed', err);
     }
   }
 
-  async function loadReserves() {
+  function recalcEstimates(lpStr: string) {
     try {
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const swapContract = new ethers.Contract(CONTRACTS.SWAP, SWAP_ABI as any, provider);
-      const [reserveA, reserveB] = await swapContract.getReserves();
-      setReserves({ a: reserveA, b: reserveB });
-    } catch (error) {
-      console.error('Error loading reserves:', error);
-    }
-  }
+      if (!lpStr || !rawTotalSupply) {
+        setEstimatedA(null);
+        setEstimatedB(null);
+        return;
+      }
+      // Prefer exact bigint math using on-chain raw values
+      if (rawTotalSupply && rawReserveA && rawReserveB) {
+        try {
+          const lpUnits = ethers.parseUnits(lpStr, 18); // user enters LP in human units
+          const totalUnits = BigInt(rawTotalSupply);
+          const rA_units = BigInt(rawReserveA);
+          const rB_units = BigInt(rawReserveB);
+          if (totalUnits === BigInt(0) || lpUnits === BigInt(0)) {
+            setEstimatedA(null);
+            setEstimatedB(null);
+            return;
+          }
+          const a_units = (rA_units * lpUnits) / totalUnits;
+          const b_units = (rB_units * lpUnits) / totalUnits;
+          setEstimatedA(ethers.formatUnits(a_units, tokenADecimals));
+          setEstimatedB(ethers.formatUnits(b_units, tokenBDecimals));
+          return;
+        } catch (err) {
+          // fall back to float approximation below
+        }
+      }
 
-  async function loadTotalSupply() {
-    try {
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const swapContract = new ethers.Contract(CONTRACTS.SWAP, SWAP_ABI as any, provider);
-      const supply = await swapContract.totalSupply();
-      setTotalSupply(supply);
-    } catch (error) {
-      console.error('Error loading total supply:', error);
-    }
-  }
-
-  function calculateEstimatedWithdraw() {
-    if (!reserves || !totalSupply || !lpAmount || Number(lpAmount) === 0) return;
-    
-    try {
-      const lpAmountBig = ethers.parseUnits(lpAmount, 18);
-      
-      // Calculate proportional amounts
-      const amountA = (lpAmountBig * reserves.a) / totalSupply;
-      const amountB = (lpAmountBig * reserves.b) / totalSupply;
-      
-      setEstimatedA(ethers.formatUnits(amountA, 6));
-      setEstimatedB(ethers.formatUnits(amountB, 18));
-    } catch (error) {
-      console.error('Error calculating withdraw amounts:', error);
+      // fallback: use floats (less accurate)
+      const lp = parseFloat(lpStr);
+      const t = parseFloat(totalSupply || '0');
+      const rA = parseFloat(reserveA || '0');
+      const rB = parseFloat(reserveB || '0');
+      if (t <= 0 || lp <= 0) {
+        setEstimatedA(null);
+        setEstimatedB(null);
+        return;
+      }
+      const portion = lp / t;
+      const a = portion * rA;
+      const b = portion * rB;
+      setEstimatedA(isFinite(a) ? a.toFixed(Math.min(6, tokenADecimals)) : null);
+      setEstimatedB(isFinite(b) ? b.toFixed(Math.min(6, tokenBDecimals)) : null);
+    } catch (err) {
       setEstimatedA(null);
       setEstimatedB(null);
     }
   }
 
-  async function handleRemoveLiquidity() {
-    if (!address || !lpAmount || Number(lpAmount) === 0) return;
-    
+  function onLpChange(v: string) {
+    setLpToBurn(v);
+    recalcEstimates(v);
+  }
+
+  async function handleRemove() {
+    if (!isConnected || !address) return;
+    if (!lpToBurn) return alert('Enter LP amount to remove');
     try {
       const provider = new ethers.BrowserProvider((window as any).ethereum);
       const signer = await provider.getSigner();
-      const swapContract = new ethers.Contract(CONTRACTS.SWAP, SWAP_ABI as any, signer);
-      
-      const lpAmountBig = ethers.parseUnits(lpAmount, 18);
-  // Contract ABI expects only the LP amount for removeLiquidity
-  const tx = await swapContract.removeLiquidity(lpAmountBig);
-      
+      const swap = new ethers.Contract(CONTRACTS.SWAP, SWAP_ABI as any, signer);
+
+      const lpUnits = ethers.parseUnits(lpToBurn, 18);
+      const tx = await swap.removeLiquidity(lpUnits);
       await tx.wait();
-      alert('Liquidity removed successfully!');
-      
-      // Refresh balances
-      await loadBalances();
-      await loadReserves();
-      await loadTotalSupply();
-      setLpAmount('');
-      setPercentage('25');
-      setEstimatedA(null);
-      setEstimatedB(null);
-    } catch (error) {
-      console.error('Remove liquidity failed:', error);
-      alert(`Remove liquidity failed: ${error}`);
+      alert('Liquidity removed');
+      setLpToBurn('');
+      await loadAll();
+    } catch (err) {
+      console.error('removeLiquidity failed', err);
+      alert(`Remove liquidity failed: ${err}`);
     }
   }
-
-  function setMaxLP() {
-    if (lpBalance) {
-      setLpAmount(lpBalance);
-      setPercentage('100');
-    }
-  }
-
-  const percentageButtons = ['25', '50', '75', '100'];
-  const ratio = reserves && reserves.a > 0 && reserves.b > 0
-    ? Number(ethers.formatUnits(reserves.b, 18)) / Number(ethers.formatUnits(reserves.a, 6))
-    : null;
 
   return (
     <div className="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 max-w-md mx-auto">
@@ -142,139 +200,67 @@ export default function RemoveLiquidityPage() {
       </div>
 
       {!isConnected ? (
-        <div className="text-center py-8">
-          <p className="text-gray-400">Please connect your wallet to remove liquidity</p>
-        </div>
+        <div className="text-center py-8"><p className="text-gray-400">Connect wallet to remove liquidity</p></div>
       ) : (
         <>
-          <div className="mb-4 text-sm text-gray-400">
-            Remove your liquidity tokens to withdraw your share of the pool
-          </div>
+          <div className="mb-4 text-sm text-gray-400 text-center">Choose pair and amount of LP to burn</div>
 
-          {/* Percentage / LP Amount */}
           <div className="bg-slate-700 rounded-xl p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-white font-medium">Amount to remove</div>
-              <div className="text-sm text-gray-400">Balance: {lpBalance || '0.00'}</div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="text-xs text-gray-300">Token A</label>
+                <div className="flex items-center gap-2 mt-2">
+                  <select value={PRESET_TOKENS.find(t => t.addr === tokenAAddr) ? tokenAAddr : 'custom'} onChange={(e) => { const v = e.target.value; if (v === 'custom') setShowCustomA(true); else { setTokenAAddr(v); setShowCustomA(false); } }} className="bg-slate-600 text-white px-3 py-2 rounded-md text-sm w-full">
+                    {PRESET_TOKENS.map(t => (<option key={t.addr} value={t.addr}>{t.label}</option>))}
+                    <option value="custom">Custom...</option>
+                  </select>
+                </div>
+                {showCustomA && (
+                  <div className="mt-2 flex gap-2">
+                    <input value={customA} onChange={(e) => setCustomA(e.target.value)} placeholder="Token address or NATIVE" className="bg-slate-600 px-3 py-2 rounded-md text-sm text-white flex-1" />
+                    <button onClick={() => { if (customA) { setTokenAAddr(customA); setShowCustomA(false); loadAll(); } }} className="bg-blue-600 px-3 py-2 rounded-md text-white text-sm">Add</button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-300">Token B</label>
+                <div className="flex items-center gap-2 mt-2">
+                  <select value={PRESET_TOKENS.find(t => t.addr === tokenBAddr) ? tokenBAddr : 'custom'} onChange={(e) => { const v = e.target.value; if (v === 'custom') setShowCustomB(true); else { setTokenBAddr(v); setShowCustomB(false); } }} className="bg-slate-600 text-white px-3 py-2 rounded-md text-sm w-full">
+                    {PRESET_TOKENS.map(t => (<option key={t.addr} value={t.addr}>{t.label}</option>))}
+                    <option value="custom">Custom...</option>
+                  </select>
+                </div>
+                {showCustomB && (
+                  <div className="mt-2 flex gap-2">
+                    <input value={customB} onChange={(e) => setCustomB(e.target.value)} placeholder="Token address or NATIVE" className="bg-slate-600 px-3 py-2 rounded-md text-sm text-white flex-1" />
+                    <button onClick={() => { if (customB) { setTokenBAddr(customB); setShowCustomB(false); loadAll(); } }} className="bg-blue-600 px-3 py-2 rounded-md text-white text-sm">Add</button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {percentageButtons.map((pct) => (
-                <button
-                  key={pct}
-                  onClick={() => setPercentage(pct)}
-                  className={`py-2 rounded-md text-sm font-semibold transition-colors ${percentage === pct ? 'border-2 border-slate-600 bg-slate-600 text-white' : 'bg-slate-600/30 text-gray-300'}`}
-                >
-                  {pct}%
-                </button>
-              ))}
+            <div className="flex justify-between items-center mb-3">
+              <div className="text-sm text-gray-300">Your LP Balance</div>
+              <div className="text-white font-medium">{lpBalance ?? '0'}</div>
             </div>
 
             <div className="mb-3">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={percentage}
-                onChange={(e) => setPercentage(e.target.value)}
-                className="w-full h-2 appearance-none rounded-lg bg-slate-600/50"
-              />
-              <div className="text-center mt-2 text-lg font-bold text-white">{percentage}%</div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 bg-slate-600 rounded-lg px-3 py-2">
-                <div className="w-6 h-6 bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-full"></div>
-                <span className="text-white font-medium">LP Tokens</span>
+              <input value={lpToBurn} onChange={(e) => onLpChange(e.target.value)} placeholder="LP amount to burn" className="w-full bg-slate-600 px-3 py-2 rounded-md text-white" />
+              <div className="flex justify-between items-center mt-2 text-sm text-gray-400">
+                <button className="bg-blue-600 px-3 py-1 rounded-md text-white text-xs" onClick={() => { if (lpBalance) { setLpToBurn(lpBalance); recalcEstimates(lpBalance); } }}>MAX</button>
+                <div>Total Supply: <span className="text-white">{totalSupply ?? '0'}</span></div>
               </div>
-              <input
-                className="bg-transparent text-white text-right text-2xl font-semibold placeholder-gray-500 focus:outline-none flex-1 ml-4"
-                placeholder="0.0"
-                value={lpAmount}
-                onChange={(e) => {
-                  setLpAmount(e.target.value);
-                  if (lpBalance && Number(e.target.value) > 0) {
-                    const pct = (Number(e.target.value) / Number(lpBalance)) * 100;
-                    setPercentage(Math.min(100, pct).toFixed(0));
-                  }
-                }}
-              />
             </div>
 
-            <div className="flex items-center justify-between text-sm mt-2">
-              <span className="text-gray-400">Your LP: {lpBalance || '0.00'}</span>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-xs font-medium transition-colors" onClick={setMaxLP}>
-                MAX
-              </button>
+            <div className="bg-slate-600 rounded-lg p-3 text-sm text-gray-300">
+              {!estimateAvailable && <div className="text-yellow-300 mb-2">Estimate unavailable for this token pair — results might be inaccurate.</div>}
+              <div className="flex justify-between mb-2"><span>Estimated {tokenASymbol}</span><span className="text-white">{estimatedA ?? '0'}</span></div>
+              <div className="flex justify-between"><span>Estimated {tokenBSymbol}</span><span className="text-white">{estimatedB ?? '0'}</span></div>
             </div>
           </div>
 
-          {/* Arrow */}
-          <div className="flex justify-center -my-1 relative z-10">
-            <div className="bg-slate-700 border-4 border-slate-800 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg">↓</div>
-          </div>
-
-          {/* Expected tokens */}
-          <div className="bg-slate-700 rounded-xl p-4 mb-2">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3 bg-slate-600 rounded-lg px-3 py-2">
-                <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"></div>
-                <span className="text-white font-medium">USDK</span>
-              </div>
-              <div className="text-white text-2xl font-semibold">{estimatedA || '0.0'}</div>
-            </div>
-          </div>
-
-          <div className="bg-slate-700 rounded-xl p-4 mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3 bg-slate-600 rounded-lg px-3 py-2">
-                <div className="w-6 h-6 bg-gradient-to-r from-purple-400 to-purple-600 rounded-full"></div>
-                <span className="text-white font-medium">KANARI</span>
-              </div>
-              <div className="text-white text-2xl font-semibold">{estimatedB || '0.0'}</div>
-            </div>
-          </div>
-
-          {/* Details */}
-          {estimatedA && estimatedB && (
-            <div className="bg-slate-700 rounded-xl p-4 mb-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-300">USDK to receive</span>
-                <span className="text-white font-medium">{estimatedA}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-300">KANARI to receive</span>
-                <span className="text-white font-medium">{estimatedB}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-300">Slippage tolerance</span>
-                <span className="text-white font-medium">5%</span>
-              </div>
-            </div>
-          )}
-
-          {/* Remove Button */}
-          <button
-            className={`w-full py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${!lpAmount || Number(lpAmount) === 0 ? 'bg-slate-600 text-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-500 to-yellow-500 hover:from-red-600 hover:to-yellow-600 text-white shadow-lg hover:shadow-xl'}`}
-            onClick={handleRemoveLiquidity}
-            disabled={!lpAmount || Number(lpAmount) === 0}
-          >
-            {!lpAmount || Number(lpAmount) === 0 ? 'Enter LP amount' : 'Remove Liquidity'}
-          </button>
-
-          {/* Pool Stats */}
-          <div className="grid grid-cols-2 gap-4 mt-6">
-            <div className="bg-slate-700 rounded-lg p-4 text-center">
-              <div className="text-white text-lg font-semibold">{lpBalance || '0.00'}</div>
-              <div className="text-gray-400 text-sm">Your LP Tokens</div>
-            </div>
-            <div className="bg-slate-700 rounded-lg p-4 text-center">
-              <div className="text-white text-lg font-semibold">
-                {reserves ? `${ethers.formatUnits(reserves.a, 6)} / ${ethers.formatUnits(reserves.b, 18)}` : '0 / 0'}
-              </div>
-              <div className="text-gray-400 text-sm">Pool Reserves</div>
-            </div>
-          </div>
+          <button onClick={handleRemove} disabled={!lpToBurn} className={`w-full py-3 rounded-xl font-semibold text-lg ${!lpToBurn ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-500 to-orange-500 text-white'}`}>Remove Liquidity</button>
         </>
       )}
     </div>
