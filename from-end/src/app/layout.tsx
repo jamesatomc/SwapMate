@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kanari DEX",
-  description: "Decentralized exchange for Kanari and USDK tokens ",
+  title: "SwapMate DEX - Decentralized Exchange",
+  description: "A modern decentralized exchange built with Next.js and Ethereum",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-900 text-white`}
       >
         <Web3Provider>
           {children}

@@ -13,8 +13,8 @@ const alpenTestnet = defineChain({
   network: 'alpenlabs-testnet',
   nativeCurrency: {
     decimals: 18,
-    name: 'Ether',
-    symbol: 'ETH',
+    name: 'sBTC',
+    symbol: 'BTC',
   },
   rpcUrls: {
     default: { http: ['https://rpc.testnet.alpenlabs.io'] },
