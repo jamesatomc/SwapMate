@@ -262,6 +262,7 @@ contract ConstantProductAMM is ReentrancyGuard {
 	/// @notice View helper to estimate output amount for a given input and token
 	function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256 amountOut) {
 		require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
+		require(amountIn > 0, "AmountIn must be > 0");
 
 		bool isA = tokenIn == tokenA;
 		(uint256 reserveA, uint256 reserveB) = getReserves();
@@ -276,6 +277,7 @@ contract ConstantProductAMM is ReentrancyGuard {
 
 	/// @notice View helper to estimate price impact in basis points for a given trade
 	function getPriceImpact(uint256 amountIn, address tokenIn) external view returns (uint256 impactBps) {
+		require(amountIn > 0, "AmountIn must be > 0");
 		uint256 amountOut = this.getAmountOut(amountIn, tokenIn);
 		uint256 expectedOut = (amountIn * (BPS - feeBps)) / BPS;
 		if (expectedOut == 0) return 0;
@@ -286,6 +288,7 @@ contract ConstantProductAMM is ReentrancyGuard {
 	receive() external payable {}
 	function setFeeBps(uint256 newFee) external onlyOwner {
 		require(newFee <= 500, "Fee too high"); // max 5%
+		require(newFee < BPS, "Fee must be less than 10000");
 		feeBps = newFee;
 		emit FeeUpdated(newFee);
 	}
