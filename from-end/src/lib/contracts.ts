@@ -3,7 +3,7 @@ export const CONTRACTS = {
   // From InteractSystem deployment
   USDK: "0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf" as const,
   KANARI: "0x4DF06d3117e4228BBD6Cd76A73896ED4B0c77160" as const,
-  SWAP: "0x417F82E4F39893eA70612B774A8aeaEf6E1a1FC7" as const,
+  SWAP: "0x7F057126f460c6fe85920b45ee41087Adec3b602" as const,
 } as const;
 
 // ABI definitions for contracts

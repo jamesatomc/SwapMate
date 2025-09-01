@@ -18,79 +18,96 @@ export default function MainDEX() {
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      {/* Navigation Bar */}
-      <nav className="bg-[var(--surface)] border-b border-gray-200 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="text-2xl font-bold text-[var(--text-color)] flex items-center gap-2">
-            🦄 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600">SwapMate</span>
+      {/* Header + hero */}
+      <header className="px-4 py-6">
+        <div className="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-start md:items-center gap-3 w-full md:w-auto">
+            <div className="w-10 h-10 rounded-full bg-orange-400 flex items-center justify-center text-white font-bold shadow">K</div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-lg font-semibold text-[var(--text-color)]">Kanari</div>
+                {/* on small screens place connect to the right inside same row */}
+                <div className="md:hidden">
+                  <div className="rounded-lg bg-[var(--surface)] p-1 border border-white/6 shadow-sm">
+                    <ConnectButton />
+                  </div>
+                </div>
+              </div>
+              <p className="mt-1 text-sm text-[var(--muted-text,#9ca3af)]">Swap tokens, provide liquidity, or mint — fast and simple.</p>
+            </div>
           </div>
 
-          <ul className="flex items-center space-x-1">
-            <li>
-              <button
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'swap'
-                    ? 'bg-[var(--primary-color)] text-white shadow'
-                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
-                  }`}
-                onClick={() => setCurrentPage('swap')}
-              >
-                <span className="text-lg">🔄</span>
-                Swap
-              </button>
-            </li>
-            <li>
-              <button
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'add'
-                    ? 'bg-[var(--primary-color)] text-white shadow'
-                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
-                  }`}
-                onClick={() => setCurrentPage('add')}
-              >
-                <span className="text-lg">➕</span>
-                Add Liquidity
-              </button>
-            </li>
-            <li>
-              <button
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'remove'
-                    ? 'bg-[var(--primary-color)] text-white shadow'
-                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
-                  }`}
-                onClick={() => setCurrentPage('remove')}
-              >
-                <span className="text-lg">➖</span>
-                Remove Liquidity
-              </button>
-            </li>
-            <li>
-              <button
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 'mint'
-                    ? 'bg-[var(--primary-color)] text-white shadow'
-                    : 'text-[var(--text-color)] hover:text-[var(--text-color)] hover:bg-[var(--surface-hover)]'
-                  }`}
-                onClick={() => setCurrentPage('mint')}
-              >
-                <span className="text-lg">💰</span>
-                Mint
-              </button>
-            </li>
-          </ul>
-
-          <div className="ml-4">
-            <div className="rounded-md bg-[var(--surface)] p-1">
+          <div className="hidden md:flex items-center gap-4 md:ml-auto">
+            <div className="text-sm text-[var(--muted-text,#9ca3af)]">Pool TVL</div>
+            <div className="text-lg font-semibold">$0</div>
+            <div className="rounded-lg bg-[var(--surface)] p-1 border border-white/6 shadow-sm">
               <ConnectButton />
             </div>
           </div>
         </div>
-      </nav>
 
-      {/* Main Content */}
-  <main className="max-w-4xl mx-auto px-4 py-8">
-        {currentPage === 'swap' && <SwapPage />}
-        {currentPage === 'add' && <AddLiquidityPage />}
-  {currentPage === 'remove' && <RemoveLiquidityPage />}
-        {currentPage === 'mint' && <MintPage />}
-      </main>
+        <main className="max-w-4xl mx-auto px-4 py-6 w-full">
+          {/* Tabs: horizontal scroll on small screens for touch */}
+          <div className="mt-4">
+            <div className="flex items-center gap-3 mb-4 overflow-x-auto no-scrollbar -mx-4 px-4">
+              <button
+                className={`min-w-[96px] flex-0 flex items-center justify-center whitespace-nowrap px-4 py-3 rounded-lg text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${currentPage === 'swap' ? 'bg-[var(--primary-color)] text-white shadow' : 'text-[var(--text-color)] bg-[var(--surface)]/40 hover:bg-[var(--surface)]/60'}`}
+                onClick={() => setCurrentPage('swap')}
+                aria-pressed={currentPage === 'swap'}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span className="hidden sm:inline">Swap</span>
+                  <span className="sm:hidden">Swap</span>
+                </span>
+              </button>
+
+              <button
+                className={`min-w-[96px] flex-0 flex items-center justify-center whitespace-nowrap px-4 py-3 rounded-lg text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${currentPage === 'add' ? 'bg-[var(--primary-color)] text-white shadow' : 'text-[var(--text-color)] bg-[var(--surface)]/40 hover:bg-[var(--surface)]/60'}`}
+                onClick={() => setCurrentPage('add')}
+                aria-pressed={currentPage === 'add'}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span className="hidden sm:inline">Add</span>
+                  <span className="sm:hidden">Add</span>
+                </span>
+              </button>
+
+              <button
+                className={`min-w-[96px] flex-0 flex items-center justify-center whitespace-nowrap px-4 py-3 rounded-lg text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${currentPage === 'remove' ? 'bg-[var(--primary-color)] text-white shadow' : 'text-[var(--text-color)] bg-[var(--surface)]/40 hover:bg-[var(--surface)]/60'}`}
+                onClick={() => setCurrentPage('remove')}
+                aria-pressed={currentPage === 'remove'}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span className="hidden sm:inline">Remove</span>
+                  <span className="sm:hidden">Remove</span>
+                </span>
+              </button>
+
+              <button
+                className={`min-w-[96px] flex-0 flex items-center justify-center whitespace-nowrap px-4 py-3 rounded-lg text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${currentPage === 'mint' ? 'bg-[var(--primary-color)] text-white shadow' : 'text-[var(--text-color)] bg-[var(--surface)]/40 hover:bg-[var(--surface)]/60'}`}
+                onClick={() => setCurrentPage('mint')}
+                aria-pressed={currentPage === 'mint'}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span className="hidden sm:inline">Mint</span>
+                  <span className="sm:hidden">Mint</span>
+                </span>
+              </button>
+            </div>
+
+            <div>
+              {currentPage === 'swap' && <SwapPage />}
+              {currentPage === 'add' && <AddLiquidityPage />}
+              {currentPage === 'remove' && <RemoveLiquidityPage />}
+              {currentPage === 'mint' && <MintPage />}
+            </div>
+          </div>
+        </main>
+      </header>
     </div>
   );
 }
