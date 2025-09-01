@@ -1,5 +1,5 @@
-import SMDex from '@/components/SMDex';
+import SMDex from '@/components/Dex';
 
 export default function Home() {
-  return <SMDex />;
+  return <Dex />;
 }

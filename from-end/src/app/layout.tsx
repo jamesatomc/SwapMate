@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SM Token Interface",
-  description: "Interface for USDK, Kanari tokens and PoolManager",
+  title: "Kanari DEX",
+  description: "Decentralized exchange for Kanari and USDK tokens ",
 };
 
 export default function RootLayout({

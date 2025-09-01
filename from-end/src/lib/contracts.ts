@@ -3,8 +3,9 @@ export const CONTRACTS = {
   // From InteractSystem deployment
   USDK: "0xCF64854FB0C8a50A1a096fc48bC59843bdEb688e" as const,
   KANARI: "0x1d1D334E3fe1c22B12D68af6B4Ffd8DFd4c1a5e7" as const,
-  POOL_MANAGER: "0xd987b74317D396B89fF722997EbDC0B587eCC5E4" as const,
-  POOL_ID: "0x1a91ae7761a8388babf7703093896d2af9c6b3bb8bdd6bba9b15edafc38b3fde" as const,
+  SWAP: "0x1234567890abcdef1234567890abcdef12345678" as const,
+  ADD_LIQUIDITY: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdef" as const,
+  REMOVE_LIQUIDITY: "0x1234567890abcdef1234567890abcdef12345678" as const
 } as const;
 
 // ABI definitions for contracts
@@ -164,59 +165,8 @@ export const KANARI_ABI = [
   }
 ] as const;
 
-export const POOL_MANAGER_ABI = [
-  {
-    "type": "function",
-    "name": "poolIdFor",
-    "inputs": [
-      {"type": "address", "name": "a"},
-      {"type": "address", "name": "b"}
-    ],
-    "outputs": [{"type": "bytes32", "name": ""}],
-    "stateMutability": "pure"
-  },
-  {
-    "type": "function",
-    "name": "getPool",
-    "inputs": [{"type": "bytes32", "name": "id"}],
-    "outputs": [
-      {"type": "address", "name": "tokenA"},
-      {"type": "address", "name": "tokenB"},
-      {"type": "uint256", "name": "freeValue"},
-      {"type": "bool", "name": "exists"}
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "addPool",
-    "inputs": [
-      {"type": "address", "name": "a"},
-      {"type": "address", "name": "b"}
-    ],
-    "outputs": [{"type": "bytes32", "name": ""}],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setFreeValue",
-    "inputs": [
-      {"type": "bytes32", "name": "id"},
-      {"type": "uint256", "name": "value"}
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "freeValueOf",
-    "inputs": [
-      {"type": "address", "name": "a"},
-      {"type": "address", "name": "b"}
-    ],
-    "outputs": [{"type": "uint256", "name": ""}],
-    "stateMutability": "view"
-  }
+export const SWAP_ABI = [
+
 ] as const;
 
 // Chain configuration for Alpen Labs testnet
