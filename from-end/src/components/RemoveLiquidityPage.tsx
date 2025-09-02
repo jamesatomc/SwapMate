@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI } from '@/lib/contracts';
+import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey } from '@/lib/contracts';
 
 export default function RemoveLiquidityPage() {
   const { address, isConnected } = useAccount();
@@ -13,6 +13,16 @@ export default function RemoveLiquidityPage() {
   const [percentage, setPercentage] = useState('25');
   const [slippage, setSlippage] = useState('0.5');
   const [isRemovingLiquidity, setIsRemovingLiquidity] = useState(false);
+
+  // Get current token pair from pool
+  const [tokenA, setTokenA] = useState<TokenKey>('USDK');
+  const [tokenB, setTokenB] = useState<TokenKey>('KANARI');
+
+  // Contract reads - Native balance
+  const { data: nativeBalance } = useBalance({
+    address: address,
+    query: { enabled: !!address }
+  });
 
   // Contract reads
   const { data: lpBalance } = useReadContract({
@@ -34,6 +44,69 @@ export default function RemoveLiquidityPage() {
     abi: SWAP_ABI,
     functionName: 'totalSupply',
   });
+
+  // Read pool tokens to determine current pair
+  const { data: poolTokenA } = useReadContract({
+    address: CONTRACTS.SWAP,
+    abi: SWAP_ABI,
+    functionName: 'tokenA',
+  });
+
+  const { data: poolTokenB } = useReadContract({
+    address: CONTRACTS.SWAP,
+    abi: SWAP_ABI,
+    functionName: 'tokenB',
+  });
+
+  // Token balances
+  const { data: usdkBalance } = useReadContract({
+    address: CONTRACTS.USDK,
+    abi: USDK_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+    query: { enabled: !!address }
+  });
+
+  const { data: kanariBalance } = useReadContract({
+    address: CONTRACTS.KANARI,
+    abi: KANARI_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+    query: { enabled: !!address }
+  });
+
+  // Helper functions
+  const getTokenKeyFromAddress = (tokenAddress: string): TokenKey => {
+    if (tokenAddress === TOKENS.USDK.address) return 'USDK';
+    if (tokenAddress === TOKENS.KANARI.address) return 'KANARI';
+    if (tokenAddress === TOKENS.NATIVE.address) return 'NATIVE';
+    return 'USDK'; // fallback
+  };
+
+  const getTokenBalance = (tokenKey: TokenKey) => {
+    switch (tokenKey) {
+      case 'NATIVE':
+        return nativeBalance?.value || BigInt(0);
+      case 'USDK':
+        return usdkBalance || BigInt(0);
+      case 'KANARI':
+        return kanariBalance || BigInt(0);
+      default:
+        return BigInt(0);
+    }
+  };
+
+  const getTokenDecimals = (tokenKey: TokenKey) => {
+    return TOKENS[tokenKey].decimals;
+  };
+
+  // Update token pair when pool data is available
+  useEffect(() => {
+    if (poolTokenA && poolTokenB) {
+      setTokenA(getTokenKeyFromAddress(poolTokenA as string));
+      setTokenB(getTokenKeyFromAddress(poolTokenB as string));
+    }
+  }, [poolTokenA, poolTokenB]);
 
   // Contract writes
   const { writeContract: writeRemoveLiquidity, data: removeLiquidityHash } = useWriteContract();
@@ -58,23 +131,26 @@ export default function RemoveLiquidityPage() {
   // Calculate expected amounts to receive
   const getExpectedAmounts = () => {
     if (!lpAmount || !reserves || !totalSupply) {
-      return { usdkAmount: '0', kanariAmount: '0' };
+      return { amountA: '0', amountB: '0' };
     }
 
     try {
       const lpAmountWei = parseUnits(lpAmount, 18);
       const [reserveA, reserveB] = reserves as [bigint, bigint];
       
-      const usdkAmountWei = (reserveA * lpAmountWei) / totalSupply;
-      const kanariAmountWei = (reserveB * lpAmountWei) / totalSupply;
+      const decimalsA = getTokenDecimals(tokenA);
+      const decimalsB = getTokenDecimals(tokenB);
+      
+      const amountAWei = (reserveA * lpAmountWei) / totalSupply;
+      const amountBWei = (reserveB * lpAmountWei) / totalSupply;
       
       return {
-        usdkAmount: formatUnits(usdkAmountWei, 18),
-        kanariAmount: formatUnits(kanariAmountWei, 18)
+        amountA: formatUnits(amountAWei, decimalsA),
+        amountB: formatUnits(amountBWei, decimalsB)
       };
     } catch (error) {
       console.error('Error calculating expected amounts:', error);
-      return { usdkAmount: '0', kanariAmount: '0' };
+      return { amountA: '0', amountB: '0' };
     }
   };
 
@@ -88,11 +164,14 @@ export default function RemoveLiquidityPage() {
     setIsRemovingLiquidity(true);
     try {
       const lpAmountWei = parseUnits(lpAmount, 18);
-      const { usdkAmount, kanariAmount } = getExpectedAmounts();
+      const { amountA, amountB } = getExpectedAmounts();
       const slippagePercent = parseFloat(slippage) / 100;
       
-      const minUsdkAmount = parseUnits(usdkAmount, 18) * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
-      const minKanariAmount = parseUnits(kanariAmount, 18) * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
+      const decimalsA = getTokenDecimals(tokenA);
+      const decimalsB = getTokenDecimals(tokenB);
+      
+      const minAmountA = parseUnits(amountA, decimalsA) * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
+      const minAmountB = parseUnits(amountB, decimalsB) * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
       
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
       
@@ -100,7 +179,7 @@ export default function RemoveLiquidityPage() {
         address: CONTRACTS.SWAP,
         abi: SWAP_ABI,
         functionName: 'removeLiquidity',
-        args: [lpAmountWei, minUsdkAmount, minKanariAmount, deadline],
+        args: [lpAmountWei, minAmountA, minAmountB, deadline],
       });
     } catch (error) {
       console.error('Remove liquidity failed:', error);
@@ -120,7 +199,7 @@ export default function RemoveLiquidityPage() {
     }
   };
 
-  const { usdkAmount, kanariAmount } = getExpectedAmounts();
+  const { amountA, amountB } = getExpectedAmounts();
 
   return (
     <div className="max-w-md mx-auto">
@@ -140,12 +219,12 @@ export default function RemoveLiquidityPage() {
                   <span>{getPoolShare()}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">USDK in Pool</span>
-                  <span>{(Number(formatUnits(reserves[0], 18)) * Number(getPoolShare()) / 100).toFixed(6)} USDK</span>
+                  <span className="text-[var(--muted-text)]">{TOKENS[tokenA].symbol} in Pool</span>
+                  <span>{(Number(formatUnits(reserves[0], getTokenDecimals(tokenA))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[tokenA].symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">KANARI in Pool</span>
-                  <span>{(Number(formatUnits(reserves[1], 18)) * Number(getPoolShare()) / 100).toFixed(6)} KANARI</span>
+                  <span className="text-[var(--muted-text)]">{TOKENS[tokenB].symbol} in Pool</span>
+                  <span>{(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[tokenB].symbol}</span>
                 </div>
               </div>
             </div>
@@ -220,26 +299,26 @@ export default function RemoveLiquidityPage() {
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-[var(--muted-text)]">You will receive:</h4>
               
-              {/* USDK Amount */}
+              {/* Token A Amount */}
               <div className="flex items-center justify-between p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
-                    U
+                  <div className={`w-6 h-6 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-xs font-bold`}>
+                    {TOKENS[tokenA].icon}
                   </div>
-                  <span className="font-medium">USDK</span>
+                  <span className="font-medium">{TOKENS[tokenA].symbol}</span>
                 </div>
-                <span className="font-medium">{parseFloat(usdkAmount).toFixed(6)}</span>
+                <span className="font-medium">{parseFloat(amountA).toFixed(6)}</span>
               </div>
 
-              {/* KANARI Amount */}
+              {/* Token B Amount */}
               <div className="flex items-center justify-between p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-orange-400 flex items-center justify-center text-white text-xs font-bold">
-                    K
+                  <div className={`w-6 h-6 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
+                    {TOKENS[tokenB].icon}
                   </div>
-                  <span className="font-medium">KANARI</span>
+                  <span className="font-medium">{TOKENS[tokenB].symbol}</span>
                 </div>
-                <span className="font-medium">{parseFloat(kanariAmount).toFixed(6)}</span>
+                <span className="font-medium">{parseFloat(amountB).toFixed(6)}</span>
               </div>
             </div>
           )}
@@ -298,12 +377,12 @@ export default function RemoveLiquidityPage() {
                 <span>{slippage}%</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Min USDK Received</span>
-                <span>{(parseFloat(usdkAmount) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
+                <span className="text-[var(--muted-text)]">Min {TOKENS[tokenA].symbol} Received</span>
+                <span>{(parseFloat(amountA) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Min KANARI Received</span>
-                <span>{(parseFloat(kanariAmount) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
+                <span className="text-[var(--muted-text)]">Min {TOKENS[tokenB].symbol} Received</span>
+                <span>{(parseFloat(amountB) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
               </div>
             </div>
           )}

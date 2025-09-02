@@ -1,10 +1,40 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
-  // From InteractSystem deployment
-  USDK: "0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf" as const,
-  KANARI: "0x4DF06d3117e4228BBD6Cd76A73896ED4B0c77160" as const,
-  SWAP: "0x7F057126f460c6fe85920b45ee41087Adec3b602" as const,
+  // From DeployDEX deployment
+  USDK: "0xa153A9a5755272d2A021A49FF3c432a6c328DC15" as const,
+  KANARI: "0xD48341EC347882cBE97C56543ab4b57aFec47c53" as const,
+  SWAP: "0xa6AC8D23FB0991Cf1931a429e623c7c22e04BbfA" as const,
 } as const;
+
+// Token definitions
+export const TOKENS = {
+  NATIVE: {
+    address: "0x0000000000000000000000000000000000000000" as const,
+    name: "sBTC",
+    symbol: "sBTC",
+    decimals: 18,
+    icon: "₿",
+    color: "bg-orange-500"
+  },
+  USDK: {
+    address: CONTRACTS.USDK,
+    name: "USD Kanari",
+    symbol: "USDK",
+    decimals: 18,
+    icon: "U",
+    color: "bg-blue-500"
+  },
+  KANARI: {
+    address: CONTRACTS.KANARI,
+    name: "Kanari Token",
+    symbol: "KANARI", 
+    decimals: 18,
+    icon: "K",
+    color: "bg-orange-400"
+  }
+} as const;
+
+export type TokenKey = keyof typeof TOKENS;
 
 // ABI definitions for contracts
 export const USDK_ABI = [
@@ -244,6 +274,13 @@ export const SWAP_ABI = [
   // AMM Core functions
   {
     "type": "function",
+    "name": "owner",
+    "inputs": [],
+    "outputs": [{"type": "address", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "tokenA",
     "inputs": [],
     "outputs": [{"type": "address", "name": ""}],
@@ -313,6 +350,33 @@ export const SWAP_ABI = [
     "outputs": [{"type": "uint256", "name": "amountOut"}],
     "stateMutability": "payable"
   },
+  {
+    "type": "function",
+    "name": "getAmountOut",
+    "inputs": [
+      {"type": "uint256", "name": "amountIn"},
+      {"type": "address", "name": "tokenIn"}
+    ],
+    "outputs": [{"type": "uint256", "name": "amountOut"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPriceImpact",
+    "inputs": [
+      {"type": "uint256", "name": "amountIn"},
+      {"type": "address", "name": "tokenIn"}
+    ],
+    "outputs": [{"type": "uint256", "name": "impactBps"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setFeeBps",
+    "inputs": [{"type": "uint256", "name": "newFee"}],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
   // Events
   {
     "type": "event",
@@ -360,7 +424,15 @@ export const SWAP_ABI = [
       {"type": "address", "name": "tokenIn", "indexed": false},
       {"type": "uint256", "name": "amountIn", "indexed": false},
       {"type": "address", "name": "tokenOut", "indexed": false},
-      {"type": "uint256", "name": "amountOut", "indexed": false}
+      {"type": "uint256", "name": "amountOut", "indexed": false},
+      {"type": "uint256", "name": "fee", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "FeeUpdated",
+    "inputs": [
+      {"type": "uint256", "name": "newFeeBps", "indexed": false}
     ]
   }
 ] as const;
@@ -372,8 +444,8 @@ export const ALPEN_TESTNET = {
   network: 'alpenlabs-testnet',
   nativeCurrency: {
     decimals: 18,
-    name: 'Ether',
-    symbol: 'ETH',
+    name: 'sBTC',
+    symbol: 'sBTC',
   },
   rpcUrls: {
     public: { http: ['https://rpc.testnet.alpenlabs.io'] },
