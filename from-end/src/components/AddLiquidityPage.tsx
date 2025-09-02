@@ -19,13 +19,13 @@ export default function AddLiquidityPage() {
   const [showTokenSelectB, setShowTokenSelectB] = useState(false);
 
   // Contract reads - Native balance
-  const { data: nativeBalance } = useBalance({
+  const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address }
   });
 
   // Token balances
-  const { data: usdkBalance } = useReadContract({
+  const { data: usdkBalance, refetch: refetchUsdkBalance } = useReadContract({
     address: CONTRACTS.USDK,
     abi: USDK_ABI,
     functionName: 'balanceOf',
@@ -33,7 +33,7 @@ export default function AddLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  const { data: kanariBalance } = useReadContract({
+  const { data: kanariBalance, refetch: refetchKanariBalance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'balanceOf',
@@ -41,7 +41,7 @@ export default function AddLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  const { data: lpBalance } = useReadContract({
+  const { data: lpBalance, refetch: refetchLpBalance } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'balanceOf',
@@ -49,20 +49,20 @@ export default function AddLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  const { data: reserves } = useReadContract({
+  const { data: reserves, refetch: refetchReserves } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'getReserves',
   });
 
-  const { data: totalSupply } = useReadContract({
+  const { data: totalSupply, refetch: refetchTotalSupply } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'totalSupply',
   });
 
   // Token allowances
-  const { data: usdkAllowance } = useReadContract({
+  const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
     address: CONTRACTS.USDK,
     abi: USDK_ABI,
     functionName: 'allowance',
@@ -70,7 +70,7 @@ export default function AddLiquidityPage() {
     query: { enabled: !!address && (tokenA === 'USDK' || tokenB === 'USDK') }
   });
 
-  const { data: kanariAllowance } = useReadContract({
+  const { data: kanariAllowance, refetch: refetchKanariAllowance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'allowance',
@@ -89,6 +89,44 @@ export default function AddLiquidityPage() {
   const { isLoading: isAddLiquidityPending } = useWaitForTransactionReceipt({
     hash: addLiquidityHash,
   });
+
+  // Refresh relevant data when approve completes
+  useEffect(() => {
+    if (approveHash && !isApproving) {
+      try {
+        refetchUsdkAllowance?.();
+        refetchKanariAllowance?.();
+        refetchUsdkBalance?.();
+        refetchKanariBalance?.();
+        refetchNativeBalance?.();
+      } catch (e) {
+        // ignore
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approveHash, isApproving]);
+
+  // Refresh pool and balances after add liquidity completes and clear inputs
+  useEffect(() => {
+    if (addLiquidityHash && !isAddLiquidityPending) {
+      try {
+        refetchReserves?.();
+        refetchTotalSupply?.();
+        refetchLpBalance?.();
+        refetchUsdkBalance?.();
+        refetchKanariBalance?.();
+        refetchNativeBalance?.();
+        refetchUsdkAllowance?.();
+        refetchKanariAllowance?.();
+      } catch (e) {
+        // ignore
+      }
+
+      setAmountA('');
+      setAmountB('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addLiquidityHash, isAddLiquidityPending]);
 
   // Helper functions
   const getTokenBalance = (tokenKey: TokenKey) => {

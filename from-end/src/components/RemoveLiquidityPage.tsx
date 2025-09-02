@@ -19,13 +19,13 @@ export default function RemoveLiquidityPage() {
   const [tokenB, setTokenB] = useState<TokenKey>('KANARI');
 
   // Contract reads - Native balance
-  const { data: nativeBalance } = useBalance({
+  const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address }
   });
 
   // Contract reads
-  const { data: lpBalance } = useReadContract({
+  const { data: lpBalance, refetch: refetchLpBalance } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'balanceOf',
@@ -33,13 +33,13 @@ export default function RemoveLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  const { data: reserves } = useReadContract({
+  const { data: reserves, refetch: refetchReserves } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'getReserves',
   });
 
-  const { data: totalSupply } = useReadContract({
+  const { data: totalSupply, refetch: refetchTotalSupply } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'totalSupply',
@@ -67,9 +67,17 @@ export default function RemoveLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  const { data: kanariBalance } = useReadContract({
+  const { data: kanariBalance, refetch: refetchKanariBalance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+    query: { enabled: !!address }
+  });
+
+  const { refetch: refetchUsdkBalance } = useReadContract({
+    address: CONTRACTS.USDK,
+    abi: USDK_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -114,6 +122,26 @@ export default function RemoveLiquidityPage() {
   const { isLoading: isRemoveLiquidityPending } = useWaitForTransactionReceipt({
     hash: removeLiquidityHash,
   });
+
+  // Refresh state after remove liquidity completes
+  useEffect(() => {
+    if (removeLiquidityHash && !isRemoveLiquidityPending) {
+      try {
+        refetchReserves?.();
+        refetchTotalSupply?.();
+        refetchLpBalance?.();
+        refetchUsdkBalance?.();
+        refetchKanariBalance?.();
+        refetchNativeBalance?.();
+      } catch (e) {
+        // ignore
+      }
+
+      setLpAmount('');
+      setPercentage('0');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [removeLiquidityHash, isRemoveLiquidityPending]);
 
   // Auto-calculate LP amount based on percentage
   useEffect(() => {

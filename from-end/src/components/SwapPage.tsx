@@ -19,13 +19,13 @@ export default function SwapPage() {
   const [showTokenSelectOut, setShowTokenSelectOut] = useState(false);
 
   // Contract reads - Native balance
-  const { data: nativeBalance } = useBalance({
+  const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address }
   });
 
   // Token balances
-  const { data: usdkBalance } = useReadContract({
+  const { data: usdkBalance, refetch: refetchUsdkBalance } = useReadContract({
     address: CONTRACTS.USDK,
     abi: USDK_ABI,
     functionName: 'balanceOf',
@@ -33,7 +33,7 @@ export default function SwapPage() {
     query: { enabled: !!address }
   });
 
-  const { data: kanariBalance } = useReadContract({
+  const { data: kanariBalance, refetch: refetchKanariBalance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'balanceOf',
@@ -41,14 +41,14 @@ export default function SwapPage() {
     query: { enabled: !!address }
   });
 
-  const { data: reserves } = useReadContract({
+  const { data: reserves, refetch: refetchReserves } = useReadContract({
     address: CONTRACTS.SWAP,
     abi: SWAP_ABI,
     functionName: 'getReserves',
   });
 
   // Token allowances
-  const { data: usdkAllowance } = useReadContract({
+  const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
     address: CONTRACTS.USDK,
     abi: USDK_ABI,
     functionName: 'allowance',
@@ -56,13 +56,14 @@ export default function SwapPage() {
     query: { enabled: !!address && (tokenIn === 'USDK' || tokenOut === 'USDK') }
   });
 
-  const { data: kanariAllowance } = useReadContract({
+  const { data: kanariAllowance, refetch: refetchKanariAllowance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'allowance',
     args: [address as Address, CONTRACTS.SWAP],
     query: { enabled: !!address && (tokenIn === 'KANARI' || tokenOut === 'KANARI') }
   });
+
 
   // Contract writes
   const { writeContract: writeApprove, data: approveHash } = useWriteContract();
@@ -75,6 +76,43 @@ export default function SwapPage() {
   const { isLoading: isSwapPending } = useWaitForTransactionReceipt({
     hash: swapHash,
   });
+
+  // When approve transaction finishes, refresh allowances and balances
+  useEffect(() => {
+    if (approveHash && !isApproving) {
+      try {
+        refetchUsdkAllowance?.();
+        refetchKanariAllowance?.();
+        refetchUsdkBalance?.();
+        refetchKanariBalance?.();
+        refetchNativeBalance?.();
+      } catch (e) {
+        // ignore
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approveHash, isApproving]);
+
+  // When swap transaction finishes, refresh reserves, balances and allowances and clear inputs
+  useEffect(() => {
+    if (swapHash && !isSwapPending) {
+      try {
+        refetchReserves?.();
+        refetchUsdkBalance?.();
+        refetchKanariBalance?.();
+        refetchNativeBalance?.();
+        refetchUsdkAllowance?.();
+        refetchKanariAllowance?.();
+      } catch (e) {
+        // ignore
+      }
+
+      // clear inputs to reflect updated state
+      setAmountIn('');
+      setAmountOut('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swapHash, isSwapPending]);
 
   // Helper functions
   const getTokenBalance = (tokenKey: TokenKey) => {
