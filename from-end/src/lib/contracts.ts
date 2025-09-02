@@ -1,9 +1,9 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
   // From DeployDEX deployment
-  USDK: "0xa153A9a5755272d2A021A49FF3c432a6c328DC15" as const,
-  KANARI: "0xD48341EC347882cBE97C56543ab4b57aFec47c53" as const,
-  SWAP: "0xa6AC8D23FB0991Cf1931a429e623c7c22e04BbfA" as const,
+  USDK: "0xdb88a2eAFFC64ea19DD17e9BC3Bab7B7598Ffb7b" as const,
+  KANARI: "0xF4e82A498B5E76Ee2340c485913Ed6E96C87B354" as const,
+  SWAP: "0xceE0927BB67ef6e2D89a797b90101155a2bB8e7B" as const,
 } as const;
 
 // Token definitions

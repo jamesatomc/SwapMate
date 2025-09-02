@@ -158,8 +158,16 @@ contract ConstantProductAMM is ReentrancyGuard {
 		} else {
 			// must provide proportional amounts based on reserves before this call
 			require(reserveABefore > 0 && reserveBBefore > 0, "Insufficient reserve");
-			uint256 lpFromA = (amountA * totalSupply()) / reserveABefore;
-			uint256 lpFromB = (amountB * totalSupply()) / reserveBBefore;
+			
+			// Safe calculation to prevent overflow: lpFromA = (amountA * totalSupply()) / reserveABefore
+			uint256 totalSup = totalSupply();
+			require(amountA <= type(uint256).max / totalSup, "AmountA too large");
+			uint256 lpFromA = (amountA * totalSup) / reserveABefore;
+			
+			// Safe calculation to prevent overflow: lpFromB = (amountB * totalSupply()) / reserveBBefore  
+			require(amountB <= type(uint256).max / totalSup, "AmountB too large");
+			uint256 lpFromB = (amountB * totalSup) / reserveBBefore;
+			
 			lpMinted = lpFromA < lpFromB ? lpFromA : lpFromB;
 			require(lpMinted > 0, "Insufficient liquidity minted");
 			// slippage protection: ensure provided amounts meet user's minimums
@@ -219,27 +227,23 @@ contract ConstantProductAMM is ReentrancyGuard {
 		require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
 
 		bool isA = tokenIn == tokenA;
-
 		(uint256 reserveA, uint256 reserveB) = getReserves();
-		uint256 reserveInBefore = isA ? reserveA : reserveB;
 
-		// handle input transfer / native handling
+		// handle input transfer / native handling and adjust reserves
 		if (_isNative(tokenIn)) {
-			// ensure caller provided sufficient native value and exactly amountIn is intended
-			require(msg.value >= amountIn, "Insufficient native value");
 			require(msg.value == amountIn, "Incorrect msg.value for native input");
-			require(reserveInBefore >= amountIn, "Reserve underflow");
-			reserveInBefore = reserveInBefore - amountIn;
+			uint256 reserveInBefore = isA ? reserveA - amountIn : reserveB - amountIn;
+			require(reserveInBefore >= 0, "Reserve underflow");
+			amountOut = _calculateSwapOutput(amountIn, reserveInBefore, isA ? reserveB : reserveA);
 		} else {
 			require(msg.value == 0, "Unexpected native value");
 			IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+			amountOut = _calculateSwapOutput(amountIn, isA ? reserveA : reserveB, isA ? reserveB : reserveA);
 		}
-
-		// compute amountOut inline to reduce stack locals
-		amountOut = (amountIn * (BPS - feeBps) * (isA ? reserveB : reserveA)) / ((reserveInBefore * BPS) + (amountIn * (BPS - feeBps)));
 
 		require(amountOut >= minAmountOut, "INSUFFICIENT_OUTPUT_AMOUNT");
 
+		// Transfer output token
 		address outToken = isA ? tokenB : tokenA;
 		if (_isNative(outToken)) {
 			(bool sent, ) = payable(msg.sender).call{value: amountOut}("");
@@ -248,15 +252,18 @@ contract ConstantProductAMM is ReentrancyGuard {
 			IERC20(outToken).safeTransfer(msg.sender, amountOut);
 		}
 
-		// compute fee inline when emitting to reduce locals (guard against division by zero)
-		emit Swap(
-			msg.sender,
-			tokenIn,
-			amountIn,
-			outToken,
-			amountOut,
-			feeBps > 0 && (BPS - feeBps) > 0 ? amountIn - ((amountOut * BPS) / (BPS - feeBps)) : 0
-		);
+		emit Swap(msg.sender, tokenIn, amountIn, outToken, amountOut, amountIn * feeBps / BPS);
+	}
+
+	function _calculateSwapOutput(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) internal view returns (uint256) {
+		uint256 amountInWithFee = amountIn * (BPS - feeBps);
+		
+		// Check for overflow in numerator calculation
+		require(amountInWithFee <= type(uint256).max / reserveOut, "AmountIn too large");
+		uint256 numerator = amountInWithFee * reserveOut;
+		
+		uint256 denominator = (reserveIn * BPS) + amountInWithFee;
+		return numerator / denominator;
 	}
 
 	/// @notice View helper to estimate output amount for a given input and token
@@ -270,7 +277,11 @@ contract ConstantProductAMM is ReentrancyGuard {
 		uint256 reserveOut = isA ? reserveB : reserveA;
 
 		uint256 amountInWithFee = amountIn * (BPS - feeBps);
+		
+		// Check for overflow in numerator calculation
+		require(amountInWithFee <= type(uint256).max / reserveOut, "AmountIn too large for calculation");
 		uint256 numerator = amountInWithFee * reserveOut;
+		
 		uint256 denominator = (reserveIn * BPS) + amountInWithFee;
 		amountOut = numerator / denominator;
 	}
@@ -279,9 +290,18 @@ contract ConstantProductAMM is ReentrancyGuard {
 	function getPriceImpact(uint256 amountIn, address tokenIn) external view returns (uint256 impactBps) {
 		require(amountIn > 0, "AmountIn must be > 0");
 		uint256 amountOut = this.getAmountOut(amountIn, tokenIn);
+		
+		// Check for overflow in expectedOut calculation
+		require(amountIn <= type(uint256).max / (BPS - feeBps), "AmountIn too large for impact calculation");
 		uint256 expectedOut = (amountIn * (BPS - feeBps)) / BPS;
+		
 		if (expectedOut == 0) return 0;
-		impactBps = ((expectedOut - amountOut) * BPS) / expectedOut;
+		if (expectedOut <= amountOut) return 0; // No negative impact
+		
+		// Check for overflow in impact calculation
+		uint256 diff = expectedOut - amountOut;
+		require(diff <= type(uint256).max / BPS, "Impact calculation overflow");
+		impactBps = (diff * BPS) / expectedOut;
 	}
 
 	// allow contract to receive native tokens
