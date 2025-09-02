@@ -1,10 +1,41 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
   // From DeployDEX deployment
-  USDK: "0xdb88a2eAFFC64ea19DD17e9BC3Bab7B7598Ffb7b" as const,
-  KANARI: "0xF4e82A498B5E76Ee2340c485913Ed6E96C87B354" as const,
-  SWAP: "0xceE0927BB67ef6e2D89a797b90101155a2bB8e7B" as const,
+  USDK: "0x8bd0eED7fBF4520F14FA70B35cDe45D83D4e13b6" as const,
+  KANARI: "0x08ce40815dE4EbE10DbC06A71A967eF9D12e8645" as const,
+  // Multiple DEX pools for different pairs
+  SWAP: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const, // Legacy - KANARI/USDK pool
+  KANARI_USDK_POOL: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const,
+  KANARI_NATIVE_POOL: "0x6852F22199064a6caa463372B43320cE9bA6970C" as const,
+  USDK_NATIVE_POOL: "0x38DB72fA85823d17E4C878FF6901931EA16ca95b" as const,
 } as const;
+
+// Pool configurations for different trading pairs
+export const POOLS = {
+  'KANARI-USDK': {
+    address: CONTRACTS.KANARI_USDK_POOL,
+    tokenA: 'KANARI' as TokenKey,
+    tokenB: 'USDK' as TokenKey,
+    name: 'KANARI/USDK',
+    description: 'Main trading pair between KANARI and USDK'
+  },
+  'KANARI-NATIVE': {
+    address: CONTRACTS.KANARI_NATIVE_POOL,
+    tokenA: 'KANARI' as TokenKey,
+    tokenB: 'NATIVE' as TokenKey,
+    name: 'KANARI/sBTC',
+    description: 'KANARI paired with native sBTC'
+  },
+  'USDK-NATIVE': {
+    address: CONTRACTS.USDK_NATIVE_POOL,
+    tokenA: 'USDK' as TokenKey,
+    tokenB: 'NATIVE' as TokenKey,
+    name: 'USDK/sBTC',
+    description: 'USDK stablecoin paired with native sBTC'
+  }
+} as const;
+
+export type PoolKey = keyof typeof POOLS;
 
 // Token definitions
 export const TOKENS = {

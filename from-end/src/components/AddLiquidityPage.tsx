@@ -3,20 +3,24 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey } from '@/lib/contracts';
+import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function AddLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for liquidity
-  const [tokenA, setTokenA] = useState<TokenKey>('USDK');
-  const [tokenB, setTokenB] = useState<TokenKey>('KANARI');
+  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDK');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [isAddingLiquidity, setIsAddingLiquidity] = useState(false);
-  const [showTokenSelectA, setShowTokenSelectA] = useState(false);
-  const [showTokenSelectB, setShowTokenSelectB] = useState(false);
+  const [showPoolSelect, setShowPoolSelect] = useState(false);
+
+  // Get current pool info
+  const currentPool = POOLS[selectedPool];
+  const poolAddress = currentPool.address;
+  const tokenA = currentPool.tokenA;
+  const tokenB = currentPool.tokenB;
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -41,32 +45,34 @@ export default function AddLiquidityPage() {
     query: { enabled: !!address }
   });
 
+  // LP balance for selected pool
   const { data: lpBalance, refetch: refetchLpBalance } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
   });
 
+  // Update reserves query to use selected pool
   const { data: reserves, refetch: refetchReserves } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'getReserves',
   });
 
   const { data: totalSupply, refetch: refetchTotalSupply } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'totalSupply',
   });
 
-  // Token allowances
+  // Token allowances for selected pool
   const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
     address: CONTRACTS.USDK,
     abi: USDK_ABI,
     functionName: 'allowance',
-    args: [address as Address, CONTRACTS.SWAP],
+    args: [address as Address, poolAddress as Address],
     query: { enabled: !!address && (tokenA === 'USDK' || tokenB === 'USDK') }
   });
 
@@ -74,7 +80,7 @@ export default function AddLiquidityPage() {
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'allowance',
-    args: [address as Address, CONTRACTS.SWAP],
+    args: [address as Address, poolAddress as Address],
     query: { enabled: !!address && (tokenA === 'KANARI' || tokenB === 'KANARI') }
   });
 
@@ -194,7 +200,7 @@ export default function AddLiquidityPage() {
       address: tokenAddress,
       abi,
       functionName: 'approve',
-      args: [CONTRACTS.SWAP, parseUnits('1000000', 18)], // Approve large amount
+      args: [poolAddress as Address, parseUnits('1000000', 18)], // Approve large amount
     });
   };
 
@@ -220,7 +226,7 @@ export default function AddLiquidityPage() {
       if (isNativeToken(tokenB)) nativeValue += amountBWei;
       
       writeAddLiquidity({
-        address: CONTRACTS.SWAP,
+        address: poolAddress as Address,
         abi: SWAP_ABI,
         functionName: 'addLiquidity',
         args: [amountAWei, amountBWei, minAmountA, minAmountB, deadline],
@@ -270,24 +276,24 @@ export default function AddLiquidityPage() {
     }
   };
 
-  // Token selection handlers
-  const handleTokenSelect = (tokenKey: TokenKey, isTokenA: boolean) => {
-    if (isTokenA) {
-      if (tokenKey === tokenB) {
-        setTokenB(tokenA);
-      }
-      setTokenA(tokenKey);
-      setShowTokenSelectA(false);
-    } else {
-      if (tokenKey === tokenA) {
-        setTokenA(tokenB);
-      }
-      setTokenB(tokenKey);
-      setShowTokenSelectB(false);
-    }
+  // Reset form when pool changes
+  useEffect(() => {
     setAmountA('');
     setAmountB('');
-  };
+  }, [selectedPool]);
+
+  // Close pool selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showPoolSelect && !target.closest('.pool-selector')) {
+        setShowPoolSelect(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPoolSelect]);
 
   // Token selector component
   const TokenSelector = ({ 
@@ -335,6 +341,76 @@ export default function AddLiquidityPage() {
     <div className="max-w-md mx-auto">
       <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
         <div className="space-y-4">
+          {/* Pool Selection */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-[var(--muted-text)]">Select Liquidity Pool</label>
+            <div className="relative pool-selector">
+              <button
+                onClick={() => setShowPoolSelect(!showPoolSelect)}
+                className="w-full flex items-center justify-between p-4 bg-[var(--background)]/50 rounded-xl border border-white/5 hover:bg-[var(--background)]/80 transition"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center -space-x-2">
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
+                      {TOKENS[tokenA].icon}
+                    </div>
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
+                      {TOKENS[tokenB].icon}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-medium">{currentPool.name}</div>
+                    <div className="text-sm text-[var(--muted-text)]">{currentPool.description}</div>
+                  </div>
+                </div>
+                <div className="text-[var(--muted-text)]">
+                  {showPoolSelect ? '↑' : '↓'}
+                </div>
+              </button>
+
+              {showPoolSelect && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+                  {Object.entries(POOLS).map(([key, pool]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setSelectedPool(key as PoolKey);
+                        setShowPoolSelect(false);
+                      }}
+                      className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
+                        selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
+                      }`}
+                    >
+                      <div className="flex items-center -space-x-2">
+                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenA].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                          {TOKENS[pool.tokenA].icon}
+                        </div>
+                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
+                          {TOKENS[pool.tokenB].icon}
+                        </div>
+                      </div>
+                      <div className="text-left">
+                        <div className="font-medium">{pool.name}</div>
+                        <div className="text-sm text-[var(--muted-text)]">{pool.description}</div>
+                      </div>
+                      {selectedPool === key && (
+                        <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pool Status */}
+            {!reserves ? (
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="text-blue-500 text-sm font-medium">🔄 Loading pool data...</div>
+                <div className="text-blue-500/80 text-xs">Fetching pool information from the blockchain.</div>
+              </div>
+            ) : null}
+          </div>
+
           {/* Pool Info */}
           {reserves && (
             <div className="p-4 bg-[var(--background)]/30 rounded-xl border border-white/5">
@@ -367,37 +443,21 @@ export default function AddLiquidityPage() {
               </span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
-              <div className="relative">
-                <button
-                  onClick={() => setShowTokenSelectA(true)}
-                  className="flex items-center gap-2 min-w-0 hover:bg-[var(--background)]/30 rounded-lg p-2 transition-colors"
-                >
-                  <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold`}>
-                    {TOKENS[tokenA].icon}
-                  </div>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold`}>
+                  {TOKENS[tokenA].icon}
+                </div>
                   <span className="font-medium">{TOKENS[tokenA].symbol}</span>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                <TokenSelector
-                  isOpen={showTokenSelectA}
-                  onClose={() => setShowTokenSelectA(false)}
-                  onSelect={(token) => handleTokenSelect(token, true)}
-                  selectedToken={tokenA}
-                  otherToken={tokenB}
-                  isTokenA={true}
+                </div>
+                <input
+                  type="text"
+                  placeholder="0.0"
+                  value={amountA}
+                  onChange={(e) => setAmountA(e.target.value)}
+                  className="flex-1 bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
                 />
               </div>
-              <input
-                type="text"
-                placeholder="0.0"
-                value={amountA}
-                onChange={(e) => setAmountA(e.target.value)}
-                className="flex-1 bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
-              />
             </div>
-          </div>
 
           {/* Plus Icon */}
           <div className="flex justify-center">
@@ -417,37 +477,21 @@ export default function AddLiquidityPage() {
               </span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
-              <div className="relative">
-                <button
-                  onClick={() => setShowTokenSelectB(true)}
-                  className="flex items-center gap-2 min-w-0 hover:bg-[var(--background)]/30 rounded-lg p-2 transition-colors"
-                >
-                  <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                    {TOKENS[tokenB].icon}
-                  </div>
-                  <span className="font-medium">{TOKENS[tokenB].symbol}</span>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                <TokenSelector
-                  isOpen={showTokenSelectB}
-                  onClose={() => setShowTokenSelectB(false)}
-                  onSelect={(token) => handleTokenSelect(token, false)}
-                  selectedToken={tokenB}
-                  otherToken={tokenA}
-                  isTokenA={false}
+              <div className="flex items-center gap-2 min-w-0">
+                <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
+                  {TOKENS[tokenB].icon}
+                </div>
+                <span className="font-medium">{TOKENS[tokenB].symbol}</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="0.0"
+                  value={amountB}
+                  onChange={(e) => setAmountB(e.target.value)}
+                  className="flex-1 bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
                 />
               </div>
-              <input
-                type="text"
-                placeholder="0.0"
-                value={amountB}
-                onChange={(e) => setAmountB(e.target.value)}
-                className="flex-1 bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
-              />
             </div>
-          </div>
 
           {/* Slippage Settings */}
           <div className="space-y-2">
@@ -543,17 +587,6 @@ export default function AddLiquidityPage() {
           )}
         </div>
       </div>
-
-      {/* Click outside to close token selectors */}
-      {(showTokenSelectA || showTokenSelectB) && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => {
-            setShowTokenSelectA(false);
-            setShowTokenSelectB(false);
-          }}
-        />
-      )}
     </div>
   );
 }

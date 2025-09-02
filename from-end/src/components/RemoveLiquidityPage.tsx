@@ -3,20 +3,24 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey } from '@/lib/contracts';
+import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function RemoveLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for removing liquidity
+  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDK');
   const [lpAmount, setLpAmount] = useState('');
   const [percentage, setPercentage] = useState('25');
   const [slippage, setSlippage] = useState('0.5');
   const [isRemovingLiquidity, setIsRemovingLiquidity] = useState(false);
+  const [showPoolSelect, setShowPoolSelect] = useState(false);
 
-  // Get current token pair from pool
-  const [tokenA, setTokenA] = useState<TokenKey>('USDK');
-  const [tokenB, setTokenB] = useState<TokenKey>('KANARI');
+  // Get current pool info
+  const currentPool = POOLS[selectedPool];
+  const poolAddress = currentPool.address;
+  const tokenA = currentPool.tokenA;
+  const tokenB = currentPool.tokenB;
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -24,9 +28,9 @@ export default function RemoveLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  // Contract reads
+  // Contract reads for selected pool
   const { data: lpBalance, refetch: refetchLpBalance } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
@@ -34,26 +38,26 @@ export default function RemoveLiquidityPage() {
   });
 
   const { data: reserves, refetch: refetchReserves } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'getReserves',
   });
 
   const { data: totalSupply, refetch: refetchTotalSupply } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'totalSupply',
   });
 
   // Read pool tokens to determine current pair
   const { data: poolTokenA } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'tokenA',
   });
 
   const { data: poolTokenB } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: poolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'tokenB',
   });
@@ -108,13 +112,24 @@ export default function RemoveLiquidityPage() {
     return TOKENS[tokenKey].decimals;
   };
 
-  // Update token pair when pool data is available
+  // Reset form when pool changes
   useEffect(() => {
-    if (poolTokenA && poolTokenB) {
-      setTokenA(getTokenKeyFromAddress(poolTokenA as string));
-      setTokenB(getTokenKeyFromAddress(poolTokenB as string));
-    }
-  }, [poolTokenA, poolTokenB]);
+    setLpAmount('');
+    setPercentage('25');
+  }, [selectedPool]);
+
+  // Close pool selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showPoolSelect && !target.closest('.pool-selector')) {
+        setShowPoolSelect(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPoolSelect]);
 
   // Contract writes
   const { writeContract: writeRemoveLiquidity, data: removeLiquidityHash } = useWriteContract();
@@ -204,7 +219,7 @@ export default function RemoveLiquidityPage() {
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
       
       writeRemoveLiquidity({
-        address: CONTRACTS.SWAP,
+        address: poolAddress as Address,
         abi: SWAP_ABI,
         functionName: 'removeLiquidity',
         args: [lpAmountWei, minAmountA, minAmountB, deadline],
@@ -233,6 +248,75 @@ export default function RemoveLiquidityPage() {
     <div className="max-w-md mx-auto">
       <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
         <div className="space-y-4">
+          {/* Pool Selection */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-[var(--muted-text)]">Select Liquidity Pool</label>
+            <div className="relative pool-selector">
+              <button
+                onClick={() => setShowPoolSelect(!showPoolSelect)}
+                className="w-full flex items-center justify-between p-4 bg-[var(--background)]/50 rounded-xl border border-white/5 hover:bg-[var(--background)]/80 transition"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center -space-x-2">
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
+                      {TOKENS[tokenA].icon}
+                    </div>
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
+                      {TOKENS[tokenB].icon}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-medium">{currentPool.name}</div>
+                    <div className="text-sm text-[var(--muted-text)]">{currentPool.description}</div>
+                  </div>
+                </div>
+                <div className="text-[var(--muted-text)]">
+                  {showPoolSelect ? '↑' : '↓'}
+                </div>
+              </button>
+
+              {showPoolSelect && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+                  {Object.entries(POOLS).map(([key, pool]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setSelectedPool(key as PoolKey);
+                        setShowPoolSelect(false);
+                      }}
+                      className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
+                        selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
+                      }`}
+                    >
+                      <div className="flex items-center -space-x-2">
+                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenA].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                          {TOKENS[pool.tokenA].icon}
+                        </div>
+                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
+                          {TOKENS[pool.tokenB].icon}
+                        </div>
+                      </div>
+                      <div className="text-left">
+                        <div className="font-medium">{pool.name}</div>
+                        <div className="text-sm text-[var(--muted-text)]">{pool.description}</div>
+                      </div>
+                      {selectedPool === key && (
+                        <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pool Status */}
+            {!lpBalance && !reserves ? (
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="text-blue-500 text-sm font-medium">🔄 Loading pool data...</div>
+                <div className="text-blue-500/80 text-xs">Fetching pool information from the blockchain.</div>
+              </div>
+            ) : null}
+          </div>
           {/* Pool Position Info */}
           {lpBalance && reserves && (
             <div className="p-4 bg-[var(--background)]/30 rounded-xl border border-white/5">

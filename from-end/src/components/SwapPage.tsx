@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey } from '@/lib/contracts';
+import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function SwapPage() {
   const { address, isConnected } = useAccount();
@@ -17,6 +17,7 @@ export default function SwapPage() {
   const [isSwapping, setIsSwapping] = useState(false);
   const [showTokenSelectIn, setShowTokenSelectIn] = useState(false);
   const [showTokenSelectOut, setShowTokenSelectOut] = useState(false);
+  const [currentPool, setCurrentPool] = useState<PoolKey>('KANARI-USDK');
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -41,18 +42,44 @@ export default function SwapPage() {
     query: { enabled: !!address }
   });
 
+  // Helper function to find the pool for two tokens
+  const findPoolForTokens = (tokenA: TokenKey, tokenB: TokenKey): PoolKey | null => {
+    const poolEntries = Object.entries(POOLS) as [PoolKey, typeof POOLS[PoolKey]][];
+    
+    for (const [poolKey, pool] of poolEntries) {
+      if ((pool.tokenA === tokenA && pool.tokenB === tokenB) || 
+          (pool.tokenA === tokenB && pool.tokenB === tokenA)) {
+        return poolKey;
+      }
+    }
+    return null;
+  };
+
+  // Update current pool when tokens change
+  useEffect(() => {
+    const pool = findPoolForTokens(tokenIn, tokenOut);
+    if (pool) {
+      setCurrentPool(pool);
+    }
+  }, [tokenIn, tokenOut]);
+
+  // Get current pool address
+  const getCurrentPoolAddress = () => {
+    return POOLS[currentPool].address;
+  };
+
   const { data: reserves, refetch: refetchReserves } = useReadContract({
-    address: CONTRACTS.SWAP,
+    address: getCurrentPoolAddress(),
     abi: SWAP_ABI,
     functionName: 'getReserves',
   });
 
-  // Token allowances
+  // Token allowances - update to use current pool address
   const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
     address: CONTRACTS.USDK,
     abi: USDK_ABI,
     functionName: 'allowance',
-    args: [address as Address, CONTRACTS.SWAP],
+    args: [address as Address, getCurrentPoolAddress()],
     query: { enabled: !!address && (tokenIn === 'USDK' || tokenOut === 'USDK') }
   });
 
@@ -60,7 +87,7 @@ export default function SwapPage() {
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'allowance',
-    args: [address as Address, CONTRACTS.SWAP],
+    args: [address as Address, getCurrentPoolAddress()],
     query: { enabled: !!address && (tokenIn === 'KANARI' || tokenOut === 'KANARI') }
   });
 
@@ -155,6 +182,8 @@ export default function SwapPage() {
     return balance ? formatUnits(balance, decimals) : '0';
   };
 
+  
+
   // Calculate output amount
   useEffect(() => {
     if (!amountIn || !reserves || parseFloat(amountIn) <= 0) {
@@ -166,11 +195,11 @@ export default function SwapPage() {
       const [reserveA, reserveB] = reserves as [bigint, bigint];
       const amountInWei = parseUnits(amountIn, getTokenDecimals(tokenIn));
       
-      // Determine which reserve corresponds to which token
-      // For now, assume reserveA is for the first token (USDK) and reserveB is for the second token (KANARI/NATIVE)
-      const isFirstTokenIn = tokenIn === 'USDK' || (tokenIn === 'NATIVE' && tokenOut !== 'USDK');
-      const reserveIn = isFirstTokenIn ? reserveA : reserveB;
-      const reserveOut = isFirstTokenIn ? reserveB : reserveA;
+      // Determine which reserve corresponds to which token based on current pool
+      const pool = POOLS[currentPool];
+      const isTokenInFirst = pool.tokenA === tokenIn;
+      const reserveIn = isTokenInFirst ? reserveA : reserveB;
+      const reserveOut = isTokenInFirst ? reserveB : reserveA;
       
       // Calculate output using AMM formula with 0.3% fee
       const feeBps = BigInt(30); // 0.3%
@@ -186,7 +215,7 @@ export default function SwapPage() {
       console.error('Error calculating output:', error);
       setAmountOut('');
     }
-  }, [amountIn, tokenIn, tokenOut, reserves]);
+  }, [amountIn, tokenIn, tokenOut, reserves, currentPool]);
 
   const switchTokens = () => {
     setTokenIn(tokenOut);
@@ -212,6 +241,28 @@ export default function SwapPage() {
     }
     setAmountIn('');
     setAmountOut('');
+    
+    // Check if the new token pair has a valid pool
+    const newTokenIn = isTokenIn ? tokenKey : tokenIn;
+    const newTokenOut = isTokenIn ? tokenOut : tokenKey;
+    const pool = findPoolForTokens(newTokenIn, newTokenOut);
+    if (!pool) {
+      // If no pool exists, try to find a valid token that has a pool with the selected token
+      const availableTokens = Object.keys(TOKENS) as TokenKey[];
+      for (const token of availableTokens) {
+        if (token !== tokenKey) {
+          const testPool = findPoolForTokens(tokenKey, token);
+          if (testPool) {
+            if (isTokenIn) {
+              setTokenOut(token);
+            } else {
+              setTokenIn(token);
+            }
+            break;
+          }
+        }
+      }
+    }
   };
 
   const handleApprove = async () => {
@@ -224,12 +275,19 @@ export default function SwapPage() {
       address: tokenAddress,
       abi,
       functionName: 'approve',
-      args: [CONTRACTS.SWAP, parseUnits('1000000', getTokenDecimals(tokenIn))], // Approve large amount
+      args: [getCurrentPoolAddress(), parseUnits('1000000', getTokenDecimals(tokenIn))], // Approve large amount
     });
   };
 
   const handleSwap = async () => {
     if (!address || !amountIn || !amountOut) return;
+
+    // Check if valid pool exists
+    const pool = findPoolForTokens(tokenIn, tokenOut);
+    if (!pool) {
+      alert('No liquidity pool exists for this token pair');
+      return;
+    }
 
     setIsSwapping(true);
     try {
@@ -247,7 +305,7 @@ export default function SwapPage() {
       if (isNativeToken(tokenIn)) {
         // When swapping native token, send value with transaction
         writeSwap({
-          address: CONTRACTS.SWAP,
+          address: getCurrentPoolAddress(),
           abi: SWAP_ABI,
           functionName: 'swap',
           args: [tokenInAddress, amountInWei, minAmountOut, deadline],
@@ -256,7 +314,7 @@ export default function SwapPage() {
       } else {
         // Regular token swap
         writeSwap({
-          address: CONTRACTS.SWAP,
+          address: getCurrentPoolAddress(),
           abi: SWAP_ABI,
           functionName: 'swap',
           args: [tokenInAddress, amountInWei, minAmountOut, deadline],
@@ -322,6 +380,21 @@ export default function SwapPage() {
   return (
     <div className="max-w-md mx-auto">
       <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
+        {/* Pool Indicator */}
+        <div className="mb-4 p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted-text)]">Trading Pool:</span>
+            <span className="text-sm font-medium">
+              {findPoolForTokens(tokenIn, tokenOut) ? POOLS[currentPool].name : 'No Pool Available'}
+            </span>
+          </div>
+          {!findPoolForTokens(tokenIn, tokenOut) && (
+            <div className="mt-2 text-xs text-red-400">
+              No liquidity pool exists for this token pair. Please select different tokens.
+            </div>
+          )}
+        </div>
+
         <div className="space-y-4">
           {/* From Token */}
           <div className="space-y-2">
@@ -448,6 +521,10 @@ export default function SwapPage() {
           {!isConnected ? (
             <div className="text-center py-4 text-[var(--muted-text)]">
               Please connect your wallet
+            </div>
+          ) : !findPoolForTokens(tokenIn, tokenOut) ? (
+            <div className="text-center py-4 text-red-400">
+              No liquidity pool available for this token pair
             </div>
           ) : needsApproval() ? (
             <button
