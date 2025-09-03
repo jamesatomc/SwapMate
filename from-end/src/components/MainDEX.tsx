@@ -7,30 +7,53 @@ import AddLiquidityPage from './AddLiquidityPage';
 import RemoveLiquidityPage from './RemoveLiquidityPage';
 import MintPage from './MintPage';
 import FarmingPage from './FarmingPage';
+import EnhancedSwapPage from './EnhancedSwapPage';
+import EnhancedAddLiquidityPage from './EnhancedAddLiquidityPage';
+import EnhancedRemoveLiquidityPage from './EnhancedRemoveLiquidityPage';
 
 type Page = 'swap' | 'add' | 'remove' | 'mint' | 'farm';
 
 export default function MainDEX() {
   const [currentPage, setCurrentPage] = useState<Page>('swap');
+  const [enhancedMode, setEnhancedMode] = useState(true); // Default to enhanced mode
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
       {/* Header + hero */}
-      <header className="px-4 py-6">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <header className="px-4 py-4 sticky top-0 z-40 backdrop-blur bg-[var(--background)]/60 border-b border-white/5">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-start md:items-center gap-3 w-full md:w-auto">
             <div className="w-10 h-10 rounded-full bg-orange-400 flex items-center justify-center text-white font-bold shadow">K</div>
             <div className="flex-1">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-lg font-semibold text-[var(--text-color)]">Kanari</div>
-                {/* on small screens place connect to the right inside same row */}
-                <div className="md:hidden">
+                {/* Enhanced Mode Toggle */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Pro</span>
+                  <button
+                    onClick={() => setEnhancedMode(!enhancedMode)}
+                    aria-pressed={enhancedMode}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enhancedMode ? 'bg-orange-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${enhancedMode ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {/* on small screens place connect and menu toggle to the right inside same row */}
+                <div className="md:hidden flex items-center gap-2">
                   <div className="rounded-lg bg-[var(--surface)] p-1 border border-white/6 shadow-sm">
                     <ConnectButton />
                   </div>
+                  <button
+                    aria-label="Open menu"
+                    onClick={() => setMenuOpen(!menuOpen)}
+                    className="p-2 rounded-md bg-[var(--surface)]/60 border border-white/6"
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
                 </div>
               </div>
-              <p className="mt-1 text-sm text-[var(--muted-text,#9ca3af)]">Swap tokens, provide liquidity, or mint — fast and simple.</p>
+              
             </div>
           </div>
 
@@ -42,6 +65,23 @@ export default function MainDEX() {
             </div>
           </div>
         </div>
+
+        {/* Mobile slide-down menu (duplicate of tabs for quick access) */}
+        {menuOpen && (
+          <nav className="md:hidden max-w-4xl mx-auto mt-3 px-4">
+            <div className="bg-[var(--surface)] rounded-lg border border-white/6 p-3 shadow-sm space-y-2">
+              {(['swap','add','remove','mint','farm'] as Page[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => { setCurrentPage(p); setMenuOpen(false); }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${currentPage === p ? 'bg-[var(--primary-color)] text-white' : 'text-[var(--text-color)] hover:bg-[var(--surface)]/60'}`}
+                >
+                  {p.charAt(0).toUpperCase() + p.slice(1)}
+                </button>
+              ))}
+            </div>
+          </nav>
+        )}
 
         <main className="max-w-4xl mx-auto px-4 py-6 w-full">
           {/* Tabs: horizontal scroll on small screens for touch */}
@@ -108,10 +148,23 @@ export default function MainDEX() {
               </button>
             </div>
 
+            {/* Enhanced Mode Info */}
+            {enhancedMode && (
+              <div className="mt-4 p-3 bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-orange-600">🚀</span>
+                  <div className="text-sm">
+                    <p className="font-medium text-orange-800">Enhanced Mode Active</p>
+                    <p className="text-orange-700">Add any token by contract address - like Uniswap!</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
-              {currentPage === 'swap' && <SwapPage />}
-              {currentPage === 'add' && <AddLiquidityPage />}
-              {currentPage === 'remove' && <RemoveLiquidityPage />}
+              {currentPage === 'swap' && (enhancedMode ? <EnhancedSwapPage /> : <SwapPage />)}
+              {currentPage === 'add' && (enhancedMode ? <EnhancedAddLiquidityPage /> : <AddLiquidityPage />)}
+              {currentPage === 'remove' && (enhancedMode ? <EnhancedRemoveLiquidityPage /> : <RemoveLiquidityPage />)}
               {currentPage === 'mint' && <MintPage />}
               {currentPage === 'farm' && <FarmingPage />}
             </div>

@@ -354,12 +354,12 @@ export default function SwapPage() {
     if (!isOpen) return null;
 
     return (
-      <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-white/10 rounded-xl shadow-xl z-50">
+      <div className="fixed bottom-0 left-0 right-0 mt-0 bg-[var(--surface)] border border-white/10 rounded-t-xl shadow-xl z-50 sm:relative sm:top-full sm:left-0 sm:right-0 sm:mt-2 sm:rounded-xl sm:shadow-xl max-h-[60vh] overflow-y-auto sm:max-h-full sm:overflow-visible">
         {Object.entries(TOKENS).map(([key, token]) => (
           <button
             key={key}
             onClick={() => onSelect(key as TokenKey)}
-            className="w-full flex items-center gap-3 p-3 hover:bg-[var(--background)]/50 transition-colors first:rounded-t-xl last:rounded-b-xl"
+            className="w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/50 transition-colors first:rounded-t-xl last:rounded-b-xl touch-manipulation"
           >
             <div className={`w-8 h-8 rounded-full ${token.color} flex items-center justify-center text-white text-sm font-bold`}>
               {token.icon}
@@ -378,8 +378,8 @@ export default function SwapPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto">
-      <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
+    <div className="w-full max-w-md mx-auto px-4 sm:px-0">
+      <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl min-h-[60vh] sm:min-h-0">
         {/* Pool Indicator */}
         <div className="mb-4 p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
           <div className="flex items-center justify-between">
