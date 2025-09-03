@@ -67,6 +67,40 @@ export default function AddLiquidityPage() {
     functionName: 'totalSupply',
   });
 
+  // Read on-chain token ordering for the pool to avoid relying solely on local POOLS mapping
+  const { data: onChainTokenA } = useReadContract({
+    address: poolAddress as Address,
+    abi: SWAP_ABI,
+    functionName: 'tokenA',
+  });
+
+  const { data: onChainTokenB } = useReadContract({
+    address: poolAddress as Address,
+    abi: SWAP_ABI,
+    functionName: 'tokenB',
+  });
+
+  // Derived helper values for native checks and UX
+  const onChainAaddr = onChainTokenA ? String(onChainTokenA).toLowerCase() : null;
+  const onChainBaddr = onChainTokenB ? String(onChainTokenB).toLowerCase() : null;
+  const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+  const poolRequiresNative = onChainAaddr === nativeZero || onChainBaddr === nativeZero;
+
+  // Preview the native amount required (if inputs are available) so we can disable the button when balance is insufficient
+  let previewNativeRequired: bigint | null = null;
+  try {
+    if ((onChainAaddr || onChainBaddr) && (amountA || amountB)) {
+      const decimalsA = TOKENS[tokenA].decimals;
+      const decimalsB = TOKENS[tokenB].decimals;
+      const aWei = amountA ? parseUnits(amountA, decimalsA) : BigInt(0);
+      const bWei = amountB ? parseUnits(amountB, decimalsB) : BigInt(0);
+      if (onChainAaddr === nativeZero) previewNativeRequired = aWei;
+      if (onChainBaddr === nativeZero) previewNativeRequired = (previewNativeRequired || BigInt(0)) + bWei;
+    }
+  } catch (e) {
+    previewNativeRequired = null;
+  }
+
   // Token allowances for selected pool
   const { data: usdcAllowance, refetch: refetchUsdcAllowance } = useReadContract({
     address: CONTRACTS.USDC,
@@ -207,6 +241,18 @@ export default function AddLiquidityPage() {
   const handleAddLiquidity = async () => {
     if (!address || !amountA || !amountB) return;
 
+    // If pool requires native currency, ensure nativeBalance is loaded and sufficient before opening wallet
+    if (poolRequiresNative && previewNativeRequired !== null) {
+      if (!nativeBalance || typeof nativeBalance.value !== 'bigint') {
+        alert('Native balance is still loading — please wait a moment and try again');
+        return;
+      }
+      if (nativeBalance.value < previewNativeRequired) {
+        alert('Insufficient native balance for this add liquidity operation');
+        return;
+      }
+    }
+
     setIsAddingLiquidity(true);
     try {
       const decimalsA = getTokenDecimals(tokenA);
@@ -220,10 +266,29 @@ export default function AddLiquidityPage() {
       
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
       
-      // Calculate native value to send
+      // Determine native value according to on-chain token ordering when available
       let nativeValue = BigInt(0);
-      if (isNativeToken(tokenA)) nativeValue += amountAWei;
-      if (isNativeToken(tokenB)) nativeValue += amountBWei;
+      const aAddrRaw = onChainTokenA || TOKENS[tokenA].address;
+      const bAddrRaw = onChainTokenB || TOKENS[tokenB].address;
+      if (!onChainTokenA || !onChainTokenB) {
+        console.warn('onChain token addresses not available yet; falling back to local POOLS mapping. This may cause Incorrect native value errors.');
+      }
+      const aAddr = String(aAddrRaw).toLowerCase();
+      const bAddr = String(bAddrRaw).toLowerCase();
+      const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+      if (aAddr === nativeZero) nativeValue += amountAWei;
+      if (bAddr === nativeZero) nativeValue += amountBWei;
+
+      // Debug output to help diagnose Incorrect native value errors
+      console.debug('AddLiquidity debug', {
+        poolAddress,
+        onChainTokenA: aAddr,
+        onChainTokenB: bAddr,
+        amountAWei: amountAWei.toString(),
+        amountBWei: amountBWei.toString(),
+        nativeValue: nativeValue.toString(),
+        nativeBalance: nativeBalance?.value ? nativeBalance.value.toString() : null,
+      });
       
       writeAddLiquidity({
         address: poolAddress as Address,
@@ -557,7 +622,10 @@ export default function AddLiquidityPage() {
                   !amountA || 
                   !amountB || 
                   needsApproval(tokenA, amountA) || 
-                  needsApproval(tokenB, amountB)
+                  needsApproval(tokenB, amountB) ||
+                  !(onChainTokenA && onChainTokenB) ||
+                  // If the pool requires native and we have a preview requirement, ensure nativeBalance is loaded and sufficient
+                  (poolRequiresNative && previewNativeRequired !== null && (!nativeBalance || typeof nativeBalance.value !== 'bigint' || nativeBalance.value < previewNativeRequired))
                 }
                 className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
