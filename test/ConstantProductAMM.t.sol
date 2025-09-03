@@ -126,7 +126,16 @@ contract ConstantProductAMMTest is Test {
         vm.deal(user, 1e21);
         vm.prank(user);
         // call with value
-        (bool ok, ) = address(amm2).call{value: 1e20}(abi.encodeWithSelector(amm2.addLiquidity.selector, uint256(1e20), uint256(amountB), uint256(0), uint256(0), uint256(block.timestamp + 1 hours)));
+        (bool ok,) = address(amm2).call{value: 1e20}(
+            abi.encodeWithSelector(
+                amm2.addLiquidity.selector,
+                uint256(1e20),
+                uint256(amountB),
+                uint256(0),
+                uint256(0),
+                uint256(block.timestamp + 1 hours)
+            )
+        );
         assertTrue(ok);
 
         (uint256 rA, uint256 rB) = amm2.getReserves();
