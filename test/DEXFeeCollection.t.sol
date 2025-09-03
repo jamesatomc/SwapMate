@@ -4,12 +4,12 @@ pragma solidity ^0.8.30;
 import "lib/forge-std/src/Test.sol";
 import "../src/AddLiquidity.sol";
 import "../src/Kanari.sol";
-import "../src/USDK.sol";
+import "../src/usdc.sol";
 
 contract DEXFeeCollectionTest is Test {
     ConstantProductAMM public amm;
     Kanari public kanari;
-    USDK public usdk;
+    USDC public usdc;
     
     address public owner = address(this);
     address public devWallet = address(0x123); // Dev fee recipient
@@ -18,45 +18,45 @@ contract DEXFeeCollectionTest is Test {
     
     uint256 public constant INITIAL_SUPPLY = 1000000e18;
     uint256 public constant INITIAL_LIQUIDITY_KANARI = 1000e18;
-    uint256 public constant INITIAL_LIQUIDITY_USDK = 1000e6; // USDK has 6 decimals
+    uint256 public constant INITIAL_LIQUIDITY_USDC = 1000e6; // USDC has 6 decimals
     
     function setUp() public {
         // Deploy tokens
         kanari = new Kanari();
-        usdk = new USDK();
+        usdc = new USDC();
         
         // Deploy AMM
-        amm = new ConstantProductAMM(address(kanari), address(usdk));
+        amm = new ConstantProductAMM(address(kanari), address(usdc));
         
         // Mint tokens
         kanari.mint(owner, INITIAL_SUPPLY);
-        usdk.mint(owner, INITIAL_SUPPLY);
+        usdc.mint(owner, INITIAL_SUPPLY);
         kanari.mint(user1, INITIAL_SUPPLY);
-        usdk.mint(user1, INITIAL_SUPPLY);
+        usdc.mint(user1, INITIAL_SUPPLY);
         kanari.mint(user2, INITIAL_SUPPLY);
-        usdk.mint(user2, INITIAL_SUPPLY);
+        usdc.mint(user2, INITIAL_SUPPLY);
         
         // Set fee recipient
         amm.setFeeRecipient(devWallet);
         
         // Approve AMM to spend tokens
         kanari.approve(address(amm), type(uint256).max);
-        usdk.approve(address(amm), type(uint256).max);
+        usdc.approve(address(amm), type(uint256).max);
         
         vm.prank(user1);
         kanari.approve(address(amm), type(uint256).max);
         vm.prank(user1);
-        usdk.approve(address(amm), type(uint256).max);
+        usdc.approve(address(amm), type(uint256).max);
         
         vm.prank(user2);
         kanari.approve(address(amm), type(uint256).max);
         vm.prank(user2);
-        usdk.approve(address(amm), type(uint256).max);
+        usdc.approve(address(amm), type(uint256).max);
         
         // Add initial liquidity
         amm.addLiquidity(
             INITIAL_LIQUIDITY_KANARI,
-            INITIAL_LIQUIDITY_USDK,
+            INITIAL_LIQUIDITY_USDC,
             0,
             0,
             block.timestamp + 1000
@@ -99,7 +99,7 @@ contract DEXFeeCollectionTest is Test {
         
         uint256 devBalanceBefore = kanari.balanceOf(devWallet);
         uint256 user1BalanceBefore = kanari.balanceOf(user1);
-        uint256 user1UsdkBefore = usdk.balanceOf(user1);
+        uint256 user1USDCBefore = usdc.balanceOf(user1);
         
         vm.expectEmit(true, false, false, true);
         emit ConstantProductAMM.FeesCollected(devWallet, expectedDevFee, address(kanari));
@@ -112,7 +112,7 @@ contract DEXFeeCollectionTest is Test {
         
         // Check user1 balances  
         assertEq(kanari.balanceOf(user1), user1BalanceBefore - swapAmount);
-        assertEq(usdk.balanceOf(user1), user1UsdkBefore + amountOut);
+        assertEq(usdc.balanceOf(user1), user1USDCBefore + amountOut);
         
         // Verify fee was actually collected
         assertGt(kanari.balanceOf(devWallet), 0);
@@ -158,26 +158,26 @@ contract DEXFeeCollectionTest is Test {
     function testSwapBothDirections() public {
         uint256 swapAmount = 100e18;
         
-        // Swap KANARI -> USDK
+        // Swap KANARI -> USDC
         vm.prank(user1);
         amm.swap(address(kanari), swapAmount, 0, block.timestamp + 1000);
         
         uint256 kanariFeesCollected = kanari.balanceOf(devWallet);
-        uint256 usdkFeesCollected = usdk.balanceOf(devWallet);
+        uint256 USDCFeesCollected = usdc.balanceOf(devWallet);
         
-        // Swap USDK -> KANARI (no burn on USDK)
-        uint256 usdkSwapAmount = 50e6; // 50 USDK
+        // Swap USDC -> KANARI (no burn on USDC)
+        uint256 USDCSwapAmount = 50e6; // 50 USDC
         vm.prank(user2);
-        amm.swap(address(usdk), usdkSwapAmount, 0, block.timestamp + 1000);
+        amm.swap(address(usdc), USDCSwapAmount, 0, block.timestamp + 1000);
         
         // Check fees collected in both tokens
-        // Kanari fees should account for burn, USDK fees should not
+        // Kanari fees should account for burn, USDC fees should not
         uint256 expectedKanariDevFee = (swapAmount * amm.devFeeBps()) / amm.BPS();
         uint256 burnAmount = (expectedKanariDevFee * kanari.burnRate()) / kanari.BASIS_POINTS();
         uint256 actualKanariReceived = expectedKanariDevFee - burnAmount;
         
         assertEq(kanariFeesCollected, actualKanariReceived);
-        assertGt(usdk.balanceOf(devWallet), usdkFeesCollected);
+        assertGt(usdc.balanceOf(devWallet), USDCFeesCollected);
     }
     
     function testGetAmountOutWithDevFee() public view {

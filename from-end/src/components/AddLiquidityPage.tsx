@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function AddLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDK');
+  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [slippage, setSlippage] = useState('0.5');
@@ -29,9 +29,9 @@ export default function AddLiquidityPage() {
   });
 
   // Token balances
-  const { data: usdkBalance, refetch: refetchUsdkBalance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -68,12 +68,12 @@ export default function AddLiquidityPage() {
   });
 
   // Token allowances for selected pool
-  const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcAllowance, refetch: refetchUsdcAllowance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'allowance',
     args: [address as Address, poolAddress as Address],
-    query: { enabled: !!address && (tokenA === 'USDK' || tokenB === 'USDK') }
+    query: { enabled: !!address && (tokenA === 'USDC' || tokenB === 'USDC') }
   });
 
   const { data: kanariAllowance, refetch: refetchKanariAllowance } = useReadContract({
@@ -100,9 +100,9 @@ export default function AddLiquidityPage() {
   useEffect(() => {
     if (approveHash && !isApproving) {
       try {
-        refetchUsdkAllowance?.();
+        refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
       } catch (e) {
@@ -119,10 +119,10 @@ export default function AddLiquidityPage() {
         refetchReserves?.();
         refetchTotalSupply?.();
         refetchLpBalance?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
-        refetchUsdkAllowance?.();
+        refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
       } catch (e) {
         // ignore
@@ -139,8 +139,8 @@ export default function AddLiquidityPage() {
     switch (tokenKey) {
       case 'NATIVE':
         return nativeBalance?.value || BigInt(0);
-      case 'USDK':
-        return usdkBalance || BigInt(0);
+      case 'USDC':
+        return usdcBalance || BigInt(0);
       case 'KANARI':
         return kanariBalance || BigInt(0);
       default:
@@ -152,8 +152,8 @@ export default function AddLiquidityPage() {
     switch (tokenKey) {
       case 'NATIVE':
         return BigInt(0); // Native doesn't need approval
-      case 'USDK':
-        return usdkAllowance || BigInt(0);
+      case 'USDC':
+        return usdcAllowance || BigInt(0);
       case 'KANARI':
         return kanariAllowance || BigInt(0);
       default:
@@ -194,8 +194,8 @@ export default function AddLiquidityPage() {
     if (!address || isNativeToken(tokenKey)) return;
     
     const tokenAddress = TOKENS[tokenKey].address;
-    const abi = tokenKey === 'USDK' ? USDK_ABI : KANARI_ABI;
-    
+    const abi = tokenKey === 'USDC' ? USDC_ABI : KANARI_ABI;
+
     writeApprove({
       address: tokenAddress,
       abi,

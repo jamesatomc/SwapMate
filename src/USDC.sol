@@ -4,9 +4,9 @@ pragma solidity ^0.8.30;
 import "lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 
-/// @title USDK Token - USD Stablecoin
+/// @title USDC Token - USD Stablecoin
 /// @notice A USD-pegged stablecoin with minting/burning capabilities
-contract USDK is ERC20, Ownable {
+contract USDC is ERC20, Ownable {
     uint8 private _decimals;
     
     mapping(address => bool) public minters;
@@ -20,11 +20,11 @@ contract USDK is ERC20, Ownable {
         _;
     }
     
-    constructor() ERC20("USD Kanari", "USDK") Ownable(msg.sender) {
+    constructor() ERC20("USD Kanari", "USDC") Ownable(msg.sender) {
         _decimals = 6; // USDC-like 6 decimals
         
         // // Mint initial supply to deployer
-        // _mint(msg.sender, 1_000_000 * 10**_decimals); // 1M USDK
+        // _mint(msg.sender, 1_000_000 * 10**_decimals); // 1M USDC
         
         // Add deployer as initial minter
         minters[msg.sender] = true;

@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function SwapPage() {
   const { address, isConnected } = useAccount();
   
   // State for swap
-  const [tokenIn, setTokenIn] = useState<TokenKey>('USDK');
+  const [tokenIn, setTokenIn] = useState<TokenKey>('USDC');
   const [tokenOut, setTokenOut] = useState<TokenKey>('KANARI');
   const [amountIn, setAmountIn] = useState('');
   const [amountOut, setAmountOut] = useState('');
@@ -17,7 +17,7 @@ export default function SwapPage() {
   const [isSwapping, setIsSwapping] = useState(false);
   const [showTokenSelectIn, setShowTokenSelectIn] = useState(false);
   const [showTokenSelectOut, setShowTokenSelectOut] = useState(false);
-  const [currentPool, setCurrentPool] = useState<PoolKey>('KANARI-USDK');
+  const [currentPool, setCurrentPool] = useState<PoolKey>('KANARI-USDC');
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -26,9 +26,9 @@ export default function SwapPage() {
   });
 
   // Token balances
-  const { data: usdkBalance, refetch: refetchUsdkBalance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -75,12 +75,12 @@ export default function SwapPage() {
   });
 
   // Token allowances - update to use current pool address
-  const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcAllowance, refetch: refetchUsdcAllowance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'allowance',
     args: [address as Address, getCurrentPoolAddress()],
-    query: { enabled: !!address && (tokenIn === 'USDK' || tokenOut === 'USDK') }
+    query: { enabled: !!address && (tokenIn === 'USDC' || tokenOut === 'USDC') }
   });
 
   const { data: kanariAllowance, refetch: refetchKanariAllowance } = useReadContract({
@@ -108,9 +108,9 @@ export default function SwapPage() {
   useEffect(() => {
     if (approveHash && !isApproving) {
       try {
-        refetchUsdkAllowance?.();
+        refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
       } catch (e) {
@@ -125,10 +125,10 @@ export default function SwapPage() {
     if (swapHash && !isSwapPending) {
       try {
         refetchReserves?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
-        refetchUsdkAllowance?.();
+        refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
       } catch (e) {
         // ignore
@@ -146,8 +146,8 @@ export default function SwapPage() {
     switch (tokenKey) {
       case 'NATIVE':
         return nativeBalance?.value || BigInt(0);
-      case 'USDK':
-        return usdkBalance || BigInt(0);
+      case 'USDC':
+        return usdcBalance || BigInt(0);
       case 'KANARI':
         return kanariBalance || BigInt(0);
       default:
@@ -159,8 +159,8 @@ export default function SwapPage() {
     switch (tokenKey) {
       case 'NATIVE':
         return BigInt(0); // Native doesn't need approval
-      case 'USDK':
-        return usdkAllowance || BigInt(0);
+      case 'USDC':
+        return usdcAllowance || BigInt(0);
       case 'KANARI':
         return kanariAllowance || BigInt(0);
       default:
@@ -269,8 +269,8 @@ export default function SwapPage() {
     if (!address || isNativeToken(tokenIn)) return;
     
     const tokenAddress = TOKENS[tokenIn].address as Address;
-    const abi = tokenIn === 'USDK' ? USDK_ABI : KANARI_ABI;
-    
+    const abi = tokenIn === 'USDC' ? USDC_ABI : KANARI_ABI;
+
     writeApprove({
       address: tokenAddress,
       abi,

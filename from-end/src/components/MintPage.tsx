@@ -3,20 +3,20 @@
 import React, { useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI } from '@/lib/contracts';
 
 export default function MintPage() {
   const { address, isConnected } = useAccount();
   
   // State for minting
-  const [selectedToken, setSelectedToken] = useState<'USDK' | 'KANARI'>('USDK');
+  const [selectedToken, setSelectedToken] = useState<'USDC' | 'KANARI'>('USDC');
   const [mintAmount, setMintAmount] = useState('');
   const [isMinting, setIsMinting] = useState(false);
 
   // Contract reads
-  const { data: usdkBalance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcBalance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -30,9 +30,9 @@ export default function MintPage() {
     query: { enabled: !!address }
   });
 
-  const { data: usdkTotalSupply } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcTotalSupply } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'totalSupply',
   });
 
@@ -55,9 +55,9 @@ export default function MintPage() {
     setIsMinting(true);
     try {
       const mintAmountWei = parseUnits(mintAmount, 18);
-      const tokenAddress = selectedToken === 'USDK' ? CONTRACTS.USDK : CONTRACTS.KANARI;
-      const abi = selectedToken === 'USDK' ? USDK_ABI : KANARI_ABI;
-      
+      const tokenAddress = selectedToken === 'USDC' ? CONTRACTS.USDC : CONTRACTS.KANARI;
+      const abi = selectedToken === 'USDC' ? USDC_ABI : KANARI_ABI;
+
       writeMint({
         address: tokenAddress,
         abi,
@@ -71,13 +71,13 @@ export default function MintPage() {
     }
   };
 
-  const getBalance = (token: 'USDK' | 'KANARI') => {
-    const balance = token === 'USDK' ? usdkBalance : kanariBalance;
+  const getBalance = (token: 'USDC' | 'KANARI') => {
+    const balance = token === 'USDC' ? usdcBalance : kanariBalance;
     return balance ? formatUnits(balance, 18) : '0';
   };
 
-  const getTotalSupply = (token: 'USDK' | 'KANARI') => {
-    const supply = token === 'USDK' ? usdkTotalSupply : kanariTotalSupply;
+  const getTotalSupply = (token: 'USDC' | 'KANARI') => {
+    const supply = token === 'USDC' ? usdcTotalSupply : kanariTotalSupply;
     return supply ? formatUnits(supply, 18) : '0';
   };
 
@@ -100,9 +100,9 @@ export default function MintPage() {
             <label className="text-sm font-medium text-[var(--muted-text)]">Select Token</label>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => setSelectedToken('USDK')}
+                onClick={() => setSelectedToken('USDC')}
                 className={`p-4 rounded-xl border transition ${
-                  selectedToken === 'USDK'
+                  selectedToken === 'USDC'
                     ? 'border-blue-500 bg-blue-500/10 text-blue-400'
                     : 'border-white/10 bg-[var(--background)]/50 hover:bg-[var(--background)]/80'
                 }`}
@@ -112,8 +112,8 @@ export default function MintPage() {
                     U
                   </div>
                   <div className="text-left">
-                    <div className="font-medium">USDK</div>
-                    <div className="text-xs text-[var(--muted-text)]">USD Kanari</div>
+                    <div className="font-medium">USDC</div>
+                    <div className="text-xs text-[var(--muted-text)]">USD Coin</div>
                   </div>
                 </div>
               </button>
@@ -179,9 +179,9 @@ export default function MintPage() {
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
               <div className="flex items-center gap-2 min-w-0">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
-                  selectedToken === 'USDK' ? 'bg-blue-500' : 'bg-orange-400'
+                  selectedToken === 'USDC' ? 'bg-blue-500' : 'bg-orange-400'
                 }`}>
-                  {selectedToken === 'USDK' ? 'U' : 'K'}
+                  {selectedToken === 'USDC' ? 'U' : 'K'}
                 </div>
                 <span className="font-medium">{selectedToken}</span>
               </div>
@@ -220,7 +220,7 @@ export default function MintPage() {
               onClick={handleMint}
               disabled={isMinting || isMintPending || !mintAmount || parseFloat(mintAmount) <= 0}
               className={`w-full py-4 text-white font-medium rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                selectedToken === 'USDK'
+                selectedToken === 'USDC'
                   ? 'bg-blue-500 hover:bg-blue-600'
                   : 'bg-orange-500 hover:bg-orange-600'
               }`}
