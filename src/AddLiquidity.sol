@@ -76,6 +76,7 @@ contract ConstantProductAMM is ReentrancyGuard {
 
 	// --- simple ownable ---
 	address public owner;
+	address public feeRecipient; // Address to receive collected fees
 	modifier onlyOwner() {
 		require(msg.sender == owner, "Not owner");
 		_;
@@ -86,13 +87,17 @@ contract ConstantProductAMM is ReentrancyGuard {
 	address public immutable tokenB; // KANARI or native (address(0))
 
 	// fee in basis points (out of 10000). e.g. 30 = 0.3%
-	uint256 public feeBps = 30;
+	uint256 public feeBps = 30; // Protocol trading fee (for liquidity)
+	uint256 public devFeeBps = 10; // Dev fee (sent to feeRecipient) - 0.1%
 	uint256 public constant BPS = 10000;
 
 	event LiquidityAdded(address indexed provider, uint256 amountA, uint256 amountB, uint256 lpMinted);
 	event LiquidityRemoved(address indexed provider, uint256 amountA, uint256 amountB, uint256 lpBurned);
 	event Swap(address indexed trader, address tokenIn, uint256 amountIn, address tokenOut, uint256 amountOut, uint256 fee);
 	event FeeUpdated(uint256 newFeeBps);
+	event DevFeeUpdated(uint256 newDevFeeBps);
+	event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+	event FeesCollected(address indexed recipient, uint256 amount, address token);
 
 	constructor(address _tokenA, address _tokenB) {
 		// allow one of the tokens to be the native coin (address(0)), but not both
@@ -100,6 +105,7 @@ contract ConstantProductAMM is ReentrancyGuard {
 		tokenA = _tokenA;
 		tokenB = _tokenB;
 		owner = msg.sender;
+		feeRecipient = msg.sender; // Default fee recipient is owner
 	}
 
 	/// @notice View reserves in the pool
@@ -229,16 +235,34 @@ contract ConstantProductAMM is ReentrancyGuard {
 		bool isA = tokenIn == tokenA;
 		(uint256 reserveA, uint256 reserveB) = getReserves();
 
+		// Calculate fee amount for dev wallet
+		uint256 feeAmount = (amountIn * devFeeBps) / BPS;
+		uint256 amountInAfterDevFee = amountIn - feeAmount;
+
 		// handle input transfer / native handling and adjust reserves
 		if (_isNative(tokenIn)) {
 			require(msg.value == amountIn, "Incorrect msg.value for native input");
-			uint256 reserveInBefore = isA ? reserveA - amountIn : reserveB - amountIn;
-			require(reserveInBefore >= 0, "Reserve underflow");
-			amountOut = _calculateSwapOutput(amountIn, reserveInBefore, isA ? reserveB : reserveA);
+			
+			// Send dev fee
+			if (feeAmount > 0 && feeRecipient != address(0)) {
+				(bool sent, ) = payable(feeRecipient).call{value: feeAmount}("");
+				require(sent, "Dev fee transfer failed");
+				emit FeesCollected(feeRecipient, feeAmount, tokenIn);
+			}
+			
+			uint256 reserveInBefore = isA ? reserveA - amountInAfterDevFee : reserveB - amountInAfterDevFee;
+			amountOut = _calculateSwapOutput(amountInAfterDevFee, reserveInBefore, isA ? reserveB : reserveA);
 		} else {
 			require(msg.value == 0, "Unexpected native value");
 			IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-			amountOut = _calculateSwapOutput(amountIn, isA ? reserveA : reserveB, isA ? reserveB : reserveA);
+			
+			// Send dev fee
+			if (feeAmount > 0 && feeRecipient != address(0)) {
+				IERC20(tokenIn).safeTransfer(feeRecipient, feeAmount);
+				emit FeesCollected(feeRecipient, feeAmount, tokenIn);
+			}
+			
+			amountOut = _calculateSwapOutput(amountInAfterDevFee, isA ? reserveA : reserveB, isA ? reserveB : reserveA);
 		}
 
 		require(amountOut >= minAmountOut, "INSUFFICIENT_OUTPUT_AMOUNT");
@@ -252,10 +276,12 @@ contract ConstantProductAMM is ReentrancyGuard {
 			IERC20(outToken).safeTransfer(msg.sender, amountOut);
 		}
 
-		emit Swap(msg.sender, tokenIn, amountIn, outToken, amountOut, amountIn * feeBps / BPS);
+		emit Swap(msg.sender, tokenIn, amountIn, outToken, amountOut, feeAmount);
 	}
 
 	function _calculateSwapOutput(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) internal view returns (uint256) {
+		// Note: amountIn here should already have dev fee deducted
+		// Apply trading fee (different from dev fee)
 		uint256 amountInWithFee = amountIn * (BPS - feeBps);
 		
 		// Check for overflow in numerator calculation
@@ -276,7 +302,10 @@ contract ConstantProductAMM is ReentrancyGuard {
 		uint256 reserveIn = isA ? reserveA : reserveB;
 		uint256 reserveOut = isA ? reserveB : reserveA;
 
-		uint256 amountInWithFee = amountIn * (BPS - feeBps);
+		// First deduct dev fee, then apply trading fee
+		uint256 devFee = (amountIn * devFeeBps) / BPS;
+		uint256 amountInAfterDevFee = amountIn - devFee;
+		uint256 amountInWithFee = amountInAfterDevFee * (BPS - feeBps);
 		
 		// Check for overflow in numerator calculation
 		require(amountInWithFee <= type(uint256).max / reserveOut, "AmountIn too large for calculation");
@@ -291,9 +320,11 @@ contract ConstantProductAMM is ReentrancyGuard {
 		require(amountIn > 0, "AmountIn must be > 0");
 		uint256 amountOut = this.getAmountOut(amountIn, tokenIn);
 		
-		// Check for overflow in expectedOut calculation
-		require(amountIn <= type(uint256).max / (BPS - feeBps), "AmountIn too large for impact calculation");
-		uint256 expectedOut = (amountIn * (BPS - feeBps)) / BPS;
+		// Calculate expected output without any fees (perfect 1:1 ratio)
+		uint256 devFee = (amountIn * devFeeBps) / BPS;
+		uint256 amountInAfterDevFee = amountIn - devFee;
+		require(amountInAfterDevFee <= type(uint256).max / (BPS - feeBps), "AmountIn too large for impact calculation");
+		uint256 expectedOut = (amountInAfterDevFee * (BPS - feeBps)) / BPS;
 		
 		if (expectedOut == 0) return 0;
 		if (expectedOut <= amountOut) return 0; // No negative impact
@@ -306,11 +337,45 @@ contract ConstantProductAMM is ReentrancyGuard {
 
 	// allow contract to receive native tokens
 	receive() external payable {}
+	
 	function setFeeBps(uint256 newFee) external onlyOwner {
 		require(newFee <= 500, "Fee too high"); // max 5%
 		require(newFee < BPS, "Fee must be less than 10000");
 		feeBps = newFee;
 		emit FeeUpdated(newFee);
+	}
+
+	/// @notice Set the dev fee rate in basis points
+	function setDevFeeBps(uint256 newDevFee) external onlyOwner {
+		require(newDevFee <= 100, "Dev fee too high"); // max 1%
+		require(newDevFee < BPS, "Dev fee must be less than 10000");
+		devFeeBps = newDevFee;
+		emit DevFeeUpdated(newDevFee);
+	}
+
+	/// @notice Set the fee recipient address (dev wallet)
+	function setFeeRecipient(address newFeeRecipient) external onlyOwner {
+		require(newFeeRecipient != address(0), "Invalid fee recipient");
+		address oldRecipient = feeRecipient;
+		feeRecipient = newFeeRecipient;
+		emit FeeRecipientUpdated(oldRecipient, newFeeRecipient);
+	}
+
+	/// @notice Withdraw accumulated fees (emergency function)
+	function withdrawFees(address token, uint256 amount) external onlyOwner {
+		require(feeRecipient != address(0), "No fee recipient set");
+		
+		if (token == address(0)) {
+			// Withdraw native token
+			require(amount <= address(this).balance, "Insufficient balance");
+			(bool sent, ) = payable(feeRecipient).call{value: amount}("");
+			require(sent, "Fee withdrawal failed");
+		} else {
+			// Withdraw ERC20 token
+			IERC20(token).safeTransfer(feeRecipient, amount);
+		}
+		
+		emit FeesCollected(feeRecipient, amount, token);
 	}
 
 	// --- Math helpers ---

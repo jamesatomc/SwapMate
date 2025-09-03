@@ -1,13 +1,20 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
-  // From DeployDEX deployment
+  // Token addresses
   USDK: "0x8bd0eED7fBF4520F14FA70B35cDe45D83D4e13b6" as const,
   KANARI: "0x08ce40815dE4EbE10DbC06A71A967eF9D12e8645" as const,
-  // Multiple DEX pools for different pairs
+  
+  // NEW POOLS with Fee Collection (from DeployPoolsDirect.s.sol)
+  KANARI_USDK_POOL: "0x7d1d2c08105F57645849F245773961795E6c6b4C" as const,
+  KANARI_NATIVE_POOL: "0xf3B58A88D5187259E5338b17241412E1A8d08A4A" as const,
+  USDK_NATIVE_POOL: "0x8749a9C683855f1C5Bd0E4f12D6fF06cB5Df3731" as const,
+  FARMING: "0xF52EA68335d2825492b1a780B672bADea25b7BBE" as const,
+  
+  // Legacy pools (no fee collection)
   SWAP: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const, // Legacy - KANARI/USDK pool
-  KANARI_USDK_POOL: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const,
-  KANARI_NATIVE_POOL: "0x6852F22199064a6caa463372B43320cE9bA6970C" as const,
-  USDK_NATIVE_POOL: "0x38DB72fA85823d17E4C878FF6901931EA16ca95b" as const,
+  OLD_KANARI_USDK: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const,
+  OLD_KANARI_NATIVE: "0x6852F22199064a6caa463372B43320cE9bA6970C" as const,
+  OLD_USDK_NATIVE: "0x38DB72fA85823d17E4C878FF6901931EA16ca95b" as const,
 } as const;
 
 // Pool configurations for different trading pairs
@@ -17,21 +24,64 @@ export const POOLS = {
     tokenA: 'KANARI' as TokenKey,
     tokenB: 'USDK' as TokenKey,
     name: 'KANARI/USDK',
-    description: 'Main trading pair between KANARI and USDK'
+    description: 'Main trading pair with fee collection (Dev fee: 0.1%)',
+    hasFeeCollection: true,
+    devFee: '0.1%',
+    tradingFee: '0.3%'
   },
   'KANARI-NATIVE': {
     address: CONTRACTS.KANARI_NATIVE_POOL,
     tokenA: 'KANARI' as TokenKey,
     tokenB: 'NATIVE' as TokenKey,
     name: 'KANARI/sBTC',
-    description: 'KANARI paired with native sBTC'
+    description: 'KANARI paired with native sBTC (Dev fee: 0.1%)',
+    hasFeeCollection: true,
+    devFee: '0.1%',
+    tradingFee: '0.3%'
   },
   'USDK-NATIVE': {
     address: CONTRACTS.USDK_NATIVE_POOL,
     tokenA: 'USDK' as TokenKey,
     tokenB: 'NATIVE' as TokenKey,
     name: 'USDK/sBTC',
-    description: 'USDK stablecoin paired with native sBTC'
+    description: 'USDK stablecoin paired with native sBTC (Dev fee: 0.1%)',
+    hasFeeCollection: true,
+    devFee: '0.1%',
+    tradingFee: '0.3%'
+  }
+} as const;
+
+// Legacy pools for migration reference
+export const LEGACY_POOLS = {
+  'OLD-KANARI-USDK': {
+    address: CONTRACTS.OLD_KANARI_USDK,
+    tokenA: 'KANARI' as TokenKey,
+    tokenB: 'USDK' as TokenKey,
+    name: 'KANARI/USDK (Legacy)',
+    description: 'Legacy pool without fee collection',
+    hasFeeCollection: false,
+    devFee: '0%',
+    tradingFee: '0.3%'
+  },
+  'OLD-KANARI-NATIVE': {
+    address: CONTRACTS.OLD_KANARI_NATIVE,
+    tokenA: 'KANARI' as TokenKey,
+    tokenB: 'NATIVE' as TokenKey,
+    name: 'KANARI/sBTC (Legacy)',
+    description: 'Legacy pool without fee collection',
+    hasFeeCollection: false,
+    devFee: '0%',
+    tradingFee: '0.3%'
+  },
+  'OLD-USDK-NATIVE': {
+    address: CONTRACTS.OLD_USDK_NATIVE,
+    tokenA: 'USDK' as TokenKey,
+    tokenB: 'NATIVE' as TokenKey,
+    name: 'USDK/sBTC (Legacy)',
+    description: 'Legacy pool without fee collection',
+    hasFeeCollection: false,
+    devFee: '0%',
+    tradingFee: '0.3%'
   }
 } as const;
 
@@ -408,6 +458,45 @@ export const SWAP_ABI = [
     "outputs": [],
     "stateMutability": "nonpayable"
   },
+  // Fee Collection Functions (NEW)
+  {
+    "type": "function",
+    "name": "feeRecipient",
+    "inputs": [],
+    "outputs": [{"type": "address", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "devFeeBps",
+    "inputs": [],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setFeeRecipient",
+    "inputs": [{"type": "address", "name": "recipient"}],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setDevFeeBps",
+    "inputs": [{"type": "uint256", "name": "newDevFee"}],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawFees",
+    "inputs": [
+      {"type": "address", "name": "token"},
+      {"type": "uint256", "name": "amount"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
   // Events
   {
     "type": "event",
@@ -464,6 +553,191 @@ export const SWAP_ABI = [
     "name": "FeeUpdated",
     "inputs": [
       {"type": "uint256", "name": "newFeeBps", "indexed": false}
+    ]
+  },
+  // Fee Collection Events (NEW)
+  {
+    "type": "event",
+    "name": "FeesCollected",
+    "inputs": [
+      {"type": "address", "name": "recipient", "indexed": true},
+      {"type": "uint256", "name": "amount", "indexed": false},
+      {"type": "address", "name": "token", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "DevFeeUpdated",
+    "inputs": [
+      {"type": "uint256", "name": "newDevFeeBps", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "FeeRecipientUpdated",
+    "inputs": [
+      {"type": "address", "name": "newRecipient", "indexed": true}
+    ]
+  }
+] as const;
+
+// Farming Contract ABI (NEW)
+export const FARMING_ABI = [
+  // View functions
+  {
+    "type": "function",
+    "name": "lpToken",
+    "inputs": [],
+    "outputs": [{"type": "address", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "rewardToken",
+    "inputs": [],
+    "outputs": [{"type": "address", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalStaked",
+    "inputs": [],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "rewardRate",
+    "inputs": [],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "periodFinish",
+    "inputs": [],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "paused",
+    "inputs": [],
+    "outputs": [{"type": "bool", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "balanceOf",
+    "inputs": [{"type": "address", "name": "account"}],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "earned",
+    "inputs": [{"type": "address", "name": "account"}],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRewardForDuration",
+    "inputs": [],
+    "outputs": [{"type": "uint256", "name": ""}],
+    "stateMutability": "view"
+  },
+  // State-changing functions
+  {
+    "type": "function",
+    "name": "stake",
+    "inputs": [{"type": "uint256", "name": "amount"}],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "inputs": [{"type": "uint256", "name": "amount"}],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claim",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "exit",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "emergencyWithdraw",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  // Owner functions
+  {
+    "type": "function",
+    "name": "fundRewards",
+    "inputs": [
+      {"type": "uint256", "name": "amount"},
+      {"type": "uint256", "name": "duration"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pause",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "unpause",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  // Events
+  {
+    "type": "event",
+    "name": "Staked",
+    "inputs": [
+      {"type": "address", "name": "user", "indexed": true},
+      {"type": "uint256", "name": "amount", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "inputs": [
+      {"type": "address", "name": "user", "indexed": true},
+      {"type": "uint256", "name": "amount", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RewardPaid",
+    "inputs": [
+      {"type": "address", "name": "user", "indexed": true},
+      {"type": "uint256", "name": "reward", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "RewardAdded",
+    "inputs": [
+      {"type": "uint256", "name": "reward", "indexed": false}
     ]
   }
 ] as const;
