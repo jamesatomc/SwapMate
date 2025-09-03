@@ -1,29 +1,25 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
   // Token addresses
-  USDK: "0x8bd0eED7fBF4520F14FA70B35cDe45D83D4e13b6" as const,
-  KANARI: "0x08ce40815dE4EbE10DbC06A71A967eF9D12e8645" as const,
+  USDC: "0xcC11f370fe6126b36D634FC1D2CCbC1F72599199" as const,
+  KANARI: "0x70C79817a33b764BC04F1c423C61d484fAE38624" as const,
   
-  // NEW POOLS with Fee Collection (from DeployPoolsDirect.s.sol)
-  KANARI_USDK_POOL: "0x7d1d2c08105F57645849F245773961795E6c6b4C" as const,
-  KANARI_NATIVE_POOL: "0xf3B58A88D5187259E5338b17241412E1A8d08A4A" as const,
-  USDK_NATIVE_POOL: "0x8749a9C683855f1C5Bd0E4f12D6fF06cB5Df3731" as const,
-  FARMING: "0xF52EA68335d2825492b1a780B672bADea25b7BBE" as const,
+  // DEX Infrastructure
+  DEX_FACTORY: "0x84d549dD7006c96C8559b4b373A7653AEC9cD67e" as const,
+  KANARI_USDC_POOL: "0xD1bF50a5a67466c2000b3Bbe6dbF762C795CA8a5" as const,
+  KANARI_NATIVE_POOL: "0x1e953FbFca405F46aa8EF3C4079F1200b4d0634b" as const,
+  USDC_NATIVE_POOL: "0x5139292E4EA267fce9F60c046eB12Eb7533144E8" as const,
+  FARMING: "0x2e57223CDA40497e6D792ffFDB7879dD7894845d" as const,
   
-  // Legacy pools (no fee collection)
-  SWAP: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const, // Legacy - KANARI/USDK pool
-  OLD_KANARI_USDK: "0x9224A59e8CE52bd7A43dB38a7049CDdeAD535f63" as const,
-  OLD_KANARI_NATIVE: "0x6852F22199064a6caa463372B43320cE9bA6970C" as const,
-  OLD_USDK_NATIVE: "0x38DB72fA85823d17E4C878FF6901931EA16ca95b" as const,
 } as const;
 
 // Pool configurations for different trading pairs
 export const POOLS = {
-  'KANARI-USDK': {
-    address: CONTRACTS.KANARI_USDK_POOL,
+  'KANARI-USDC': {
+    address: CONTRACTS.KANARI_USDC_POOL,
     tokenA: 'KANARI' as TokenKey,
-    tokenB: 'USDK' as TokenKey,
-    name: 'KANARI/USDK',
+    tokenB: 'USDC' as TokenKey,
+    name: 'KANARI/USDC',
     description: 'Main trading pair with fee collection (Dev fee: 0.1%)',
     hasFeeCollection: true,
     devFee: '0.1%',
@@ -39,51 +35,18 @@ export const POOLS = {
     devFee: '0.1%',
     tradingFee: '0.3%'
   },
-  'USDK-NATIVE': {
-    address: CONTRACTS.USDK_NATIVE_POOL,
-    tokenA: 'USDK' as TokenKey,
+  'USDC-NATIVE': {
+    address: CONTRACTS.USDC_NATIVE_POOL,
+    tokenA: 'USDC' as TokenKey,
     tokenB: 'NATIVE' as TokenKey,
-    name: 'USDK/sBTC',
-    description: 'USDK stablecoin paired with native sBTC (Dev fee: 0.1%)',
+    name: 'USDC/sBTC',
+    description: 'USDC stablecoin paired with native sBTC (Dev fee: 0.1%)',
     hasFeeCollection: true,
     devFee: '0.1%',
     tradingFee: '0.3%'
   }
 } as const;
 
-// Legacy pools for migration reference
-export const LEGACY_POOLS = {
-  'OLD-KANARI-USDK': {
-    address: CONTRACTS.OLD_KANARI_USDK,
-    tokenA: 'KANARI' as TokenKey,
-    tokenB: 'USDK' as TokenKey,
-    name: 'KANARI/USDK (Legacy)',
-    description: 'Legacy pool without fee collection',
-    hasFeeCollection: false,
-    devFee: '0%',
-    tradingFee: '0.3%'
-  },
-  'OLD-KANARI-NATIVE': {
-    address: CONTRACTS.OLD_KANARI_NATIVE,
-    tokenA: 'KANARI' as TokenKey,
-    tokenB: 'NATIVE' as TokenKey,
-    name: 'KANARI/sBTC (Legacy)',
-    description: 'Legacy pool without fee collection',
-    hasFeeCollection: false,
-    devFee: '0%',
-    tradingFee: '0.3%'
-  },
-  'OLD-USDK-NATIVE': {
-    address: CONTRACTS.OLD_USDK_NATIVE,
-    tokenA: 'USDK' as TokenKey,
-    tokenB: 'NATIVE' as TokenKey,
-    name: 'USDK/sBTC (Legacy)',
-    description: 'Legacy pool without fee collection',
-    hasFeeCollection: false,
-    devFee: '0%',
-    tradingFee: '0.3%'
-  }
-} as const;
 
 export type PoolKey = keyof typeof POOLS;
 
@@ -97,10 +60,10 @@ export const TOKENS = {
     icon: "₿",
     color: "bg-orange-500"
   },
-  USDK: {
-    address: CONTRACTS.USDK,
-    name: "USD Kanari",
-    symbol: "USDK",
+  USDC: {
+    address: CONTRACTS.USDC,
+    name: "USD Coin",
+    symbol: "USDC",
     decimals: 18,
     icon: "U",
     color: "bg-blue-500"
@@ -118,7 +81,7 @@ export const TOKENS = {
 export type TokenKey = keyof typeof TOKENS;
 
 // ABI definitions for contracts
-export const USDK_ABI = [
+export const USDC_ABI = [
   {
     "type": "function",
     "name": "name",

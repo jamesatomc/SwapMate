@@ -59,18 +59,11 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
             return rewardPerTokenStored;
         }
         uint256 timeDelta = lastTimeRewardApplicable() - lastUpdateTime;
-        return
-            rewardPerTokenStored +
-            (timeDelta * rewardRate * 1e18) /
-            _totalSupply;
+        return rewardPerTokenStored + (timeDelta * rewardRate * 1e18) / _totalSupply;
     }
 
     function earned(address account) public view returns (uint256) {
-        return
-            (_balances[account] *
-                (rewardPerToken() - userRewardPerTokenPaid[account])) /
-            1e18 +
-            rewards[account];
+        return (_balances[account] * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18 + rewards[account];
     }
 
     /* ========== MUTATIVE ========== */
@@ -124,14 +117,14 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
     function emergencyWithdraw() external nonReentrant {
         uint256 amount = _balances[msg.sender];
         require(amount > 0, "No tokens to withdraw");
-        
+
         _totalSupply -= amount;
         _balances[msg.sender] = 0;
-        
+
         // Clear user's reward state without paying out
         rewards[msg.sender] = 0;
         userRewardPerTokenPaid[msg.sender] = 0;
-        
+
         lpToken.safeTransfer(msg.sender, amount);
         emit EmergencyWithdraw(msg.sender, amount);
     }
@@ -141,10 +134,13 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
     /// @notice Fund the contract with reward tokens and start/replenish a reward period
     /// @param rewardAmount amount of reward tokens to add
     /// @param duration duration (in seconds) over which rewards are distributed
-    function fundRewards(
-        uint256 rewardAmount,
-        uint256 duration
-    ) external onlyOwner whenNotPaused nonReentrant updateReward(address(0)) {
+    function fundRewards(uint256 rewardAmount, uint256 duration)
+        external
+        onlyOwner
+        whenNotPaused
+        nonReentrant
+        updateReward(address(0))
+    {
         require(duration > 0, "Duration must be > 0");
         require(rewardAmount > 0, "Reward must be > 0");
 

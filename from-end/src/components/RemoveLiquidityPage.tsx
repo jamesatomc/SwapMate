@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function RemoveLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for removing liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDK');
+  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
   const [lpAmount, setLpAmount] = useState('');
   const [percentage, setPercentage] = useState('25');
   const [slippage, setSlippage] = useState('0.5');
@@ -63,9 +63,9 @@ export default function RemoveLiquidityPage() {
   });
 
   // Token balances
-  const { data: usdkBalance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcBalance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -79,9 +79,9 @@ export default function RemoveLiquidityPage() {
     query: { enabled: !!address }
   });
 
-  const { refetch: refetchUsdkBalance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { refetch: refetchUsdcBalance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -89,18 +89,18 @@ export default function RemoveLiquidityPage() {
 
   // Helper functions
   const getTokenKeyFromAddress = (tokenAddress: string): TokenKey => {
-    if (tokenAddress === TOKENS.USDK.address) return 'USDK';
+    if (tokenAddress === TOKENS.USDC.address) return 'USDC';
     if (tokenAddress === TOKENS.KANARI.address) return 'KANARI';
     if (tokenAddress === TOKENS.NATIVE.address) return 'NATIVE';
-    return 'USDK'; // fallback
+    return 'USDC'; // fallback
   };
 
   const getTokenBalance = (tokenKey: TokenKey) => {
     switch (tokenKey) {
       case 'NATIVE':
         return nativeBalance?.value || BigInt(0);
-      case 'USDK':
-        return usdkBalance || BigInt(0);
+      case 'USDC':
+        return usdcBalance || BigInt(0);
       case 'KANARI':
         return kanariBalance || BigInt(0);
       default:
@@ -145,7 +145,7 @@ export default function RemoveLiquidityPage() {
         refetchReserves?.();
         refetchTotalSupply?.();
         refetchLpBalance?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
       } catch (e) {

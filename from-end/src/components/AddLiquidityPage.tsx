@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDK_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
 export default function AddLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDK');
+  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [slippage, setSlippage] = useState('0.5');
@@ -29,9 +29,9 @@ export default function AddLiquidityPage() {
   });
 
   // Token balances
-  const { data: usdkBalance, refetch: refetchUsdkBalance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'balanceOf',
     args: [address as Address],
     query: { enabled: !!address }
@@ -67,13 +67,47 @@ export default function AddLiquidityPage() {
     functionName: 'totalSupply',
   });
 
+  // Read on-chain token ordering for the pool to avoid relying solely on local POOLS mapping
+  const { data: onChainTokenA } = useReadContract({
+    address: poolAddress as Address,
+    abi: SWAP_ABI,
+    functionName: 'tokenA',
+  });
+
+  const { data: onChainTokenB } = useReadContract({
+    address: poolAddress as Address,
+    abi: SWAP_ABI,
+    functionName: 'tokenB',
+  });
+
+  // Derived helper values for native checks and UX
+  const onChainAaddr = onChainTokenA ? String(onChainTokenA).toLowerCase() : null;
+  const onChainBaddr = onChainTokenB ? String(onChainTokenB).toLowerCase() : null;
+  const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+  const poolRequiresNative = onChainAaddr === nativeZero || onChainBaddr === nativeZero;
+
+  // Preview the native amount required (if inputs are available) so we can disable the button when balance is insufficient
+  let previewNativeRequired: bigint | null = null;
+  try {
+    if ((onChainAaddr || onChainBaddr) && (amountA || amountB)) {
+      const decimalsA = TOKENS[tokenA].decimals;
+      const decimalsB = TOKENS[tokenB].decimals;
+      const aWei = amountA ? parseUnits(amountA, decimalsA) : BigInt(0);
+      const bWei = amountB ? parseUnits(amountB, decimalsB) : BigInt(0);
+      if (onChainAaddr === nativeZero) previewNativeRequired = aWei;
+      if (onChainBaddr === nativeZero) previewNativeRequired = (previewNativeRequired || BigInt(0)) + bWei;
+    }
+  } catch (e) {
+    previewNativeRequired = null;
+  }
+
   // Token allowances for selected pool
-  const { data: usdkAllowance, refetch: refetchUsdkAllowance } = useReadContract({
-    address: CONTRACTS.USDK,
-    abi: USDK_ABI,
+  const { data: usdcAllowance, refetch: refetchUsdcAllowance } = useReadContract({
+    address: CONTRACTS.USDC,
+    abi: USDC_ABI,
     functionName: 'allowance',
     args: [address as Address, poolAddress as Address],
-    query: { enabled: !!address && (tokenA === 'USDK' || tokenB === 'USDK') }
+    query: { enabled: !!address && (tokenA === 'USDC' || tokenB === 'USDC') }
   });
 
   const { data: kanariAllowance, refetch: refetchKanariAllowance } = useReadContract({
@@ -100,9 +134,9 @@ export default function AddLiquidityPage() {
   useEffect(() => {
     if (approveHash && !isApproving) {
       try {
-        refetchUsdkAllowance?.();
+        refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
       } catch (e) {
@@ -119,10 +153,10 @@ export default function AddLiquidityPage() {
         refetchReserves?.();
         refetchTotalSupply?.();
         refetchLpBalance?.();
-        refetchUsdkBalance?.();
+        refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
-        refetchUsdkAllowance?.();
+        refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
       } catch (e) {
         // ignore
@@ -139,8 +173,8 @@ export default function AddLiquidityPage() {
     switch (tokenKey) {
       case 'NATIVE':
         return nativeBalance?.value || BigInt(0);
-      case 'USDK':
-        return usdkBalance || BigInt(0);
+      case 'USDC':
+        return usdcBalance || BigInt(0);
       case 'KANARI':
         return kanariBalance || BigInt(0);
       default:
@@ -152,8 +186,8 @@ export default function AddLiquidityPage() {
     switch (tokenKey) {
       case 'NATIVE':
         return BigInt(0); // Native doesn't need approval
-      case 'USDK':
-        return usdkAllowance || BigInt(0);
+      case 'USDC':
+        return usdcAllowance || BigInt(0);
       case 'KANARI':
         return kanariAllowance || BigInt(0);
       default:
@@ -194,8 +228,8 @@ export default function AddLiquidityPage() {
     if (!address || isNativeToken(tokenKey)) return;
     
     const tokenAddress = TOKENS[tokenKey].address;
-    const abi = tokenKey === 'USDK' ? USDK_ABI : KANARI_ABI;
-    
+    const abi = tokenKey === 'USDC' ? USDC_ABI : KANARI_ABI;
+
     writeApprove({
       address: tokenAddress,
       abi,
@@ -206,6 +240,18 @@ export default function AddLiquidityPage() {
 
   const handleAddLiquidity = async () => {
     if (!address || !amountA || !amountB) return;
+
+    // If pool requires native currency, ensure nativeBalance is loaded and sufficient before opening wallet
+    if (poolRequiresNative && previewNativeRequired !== null) {
+      if (!nativeBalance || typeof nativeBalance.value !== 'bigint') {
+        alert('Native balance is still loading — please wait a moment and try again');
+        return;
+      }
+      if (nativeBalance.value < previewNativeRequired) {
+        alert('Insufficient native balance for this add liquidity operation');
+        return;
+      }
+    }
 
     setIsAddingLiquidity(true);
     try {
@@ -220,10 +266,29 @@ export default function AddLiquidityPage() {
       
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
       
-      // Calculate native value to send
+      // Determine native value according to on-chain token ordering when available
       let nativeValue = BigInt(0);
-      if (isNativeToken(tokenA)) nativeValue += amountAWei;
-      if (isNativeToken(tokenB)) nativeValue += amountBWei;
+      const aAddrRaw = onChainTokenA || TOKENS[tokenA].address;
+      const bAddrRaw = onChainTokenB || TOKENS[tokenB].address;
+      if (!onChainTokenA || !onChainTokenB) {
+        console.warn('onChain token addresses not available yet; falling back to local POOLS mapping. This may cause Incorrect native value errors.');
+      }
+      const aAddr = String(aAddrRaw).toLowerCase();
+      const bAddr = String(bAddrRaw).toLowerCase();
+      const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+      if (aAddr === nativeZero) nativeValue += amountAWei;
+      if (bAddr === nativeZero) nativeValue += amountBWei;
+
+      // Debug output to help diagnose Incorrect native value errors
+      console.debug('AddLiquidity debug', {
+        poolAddress,
+        onChainTokenA: aAddr,
+        onChainTokenB: bAddr,
+        amountAWei: amountAWei.toString(),
+        amountBWei: amountBWei.toString(),
+        nativeValue: nativeValue.toString(),
+        nativeBalance: nativeBalance?.value ? nativeBalance.value.toString() : null,
+      });
       
       writeAddLiquidity({
         address: poolAddress as Address,
@@ -557,7 +622,10 @@ export default function AddLiquidityPage() {
                   !amountA || 
                   !amountB || 
                   needsApproval(tokenA, amountA) || 
-                  needsApproval(tokenB, amountB)
+                  needsApproval(tokenB, amountB) ||
+                  !(onChainTokenA && onChainTokenB) ||
+                  // If the pool requires native and we have a preview requirement, ensure nativeBalance is loaded and sufficient
+                  (poolRequiresNative && previewNativeRequired !== null && (!nativeBalance || typeof nativeBalance.value !== 'bigint' || nativeBalance.value < previewNativeRequired))
                 }
                 className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
