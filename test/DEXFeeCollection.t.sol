@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "lib/forge-std/src/Test.sol";
-import "../src/AddLiquidity.sol";
+import "../src/ConstantProductAMM.sol";
 import "../src/Kanari.sol";
 import "../src/usdc.sol";
 
