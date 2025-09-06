@@ -8,7 +8,7 @@ import "src/Farming.sol";
 import "src/Kanari.sol";
 import "src/USDC.sol";
 
-contract DeployDEX is Script {
+contract DeployDEX_v1 is Script {
     // Deployment addresses - will be set after deployment
     address public kanariToken;
     address public usdcToken;

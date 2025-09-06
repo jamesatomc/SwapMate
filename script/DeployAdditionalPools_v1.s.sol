@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import "../lib/forge-std/src/Script.sol";
 import "src/DEXFactory.sol";
 
-contract DeployAdditionalPools is Script {
+contract DeployAdditionalPools_v1 is Script {
     // Configuration
     address public constant DEX_FACTORY = 0x84d549dD7006c96C8559b4b373A7653AEC9cD67e;
     address public constant KANARI_TOKEN = 0x70C79817a33b764BC04F1c423C61d484fAE38624;

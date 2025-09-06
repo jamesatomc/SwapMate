@@ -26,7 +26,7 @@ import "src/DEXFactory.sol";
 import "src/Farming.sol";
 import "src/Kanari.sol";
 
-contract DeployDEX is Script {
+contract DeployDEX_v2 is Script {
     // Deployment addresses - will be set after deployment
     address public kanariToken;
     address public nativeToken = 0x0000000000000000000000000000000000000000; // sBTC (native)
