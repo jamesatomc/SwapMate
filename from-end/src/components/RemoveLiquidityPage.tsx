@@ -5,11 +5,19 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { formatUnits, parseUnits, Address } from 'viem';
 import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 
+type CustomPool = {
+  poolAddress: string;
+  tokenAKey?: string;
+  tokenBKey?: string;
+  pairName?: string;
+};
+
 export default function RemoveLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for removing liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
+  const [selectedPool, setSelectedPool] = useState<string>('KANARI-NATIVE');
+  const [customPools, setCustomPools] = useState<CustomPool[]>([]);
   const [lpAmount, setLpAmount] = useState('');
   const [percentage, setPercentage] = useState('25');
   const [slippage, setSlippage] = useState('0.5');
@@ -17,10 +25,16 @@ export default function RemoveLiquidityPage() {
   const [showPoolSelect, setShowPoolSelect] = useState(false);
 
   // Get current pool info
-  const currentPool = POOLS[selectedPool];
-  const poolAddress = currentPool.address;
-  const tokenA = currentPool.tokenA;
-  const tokenB = currentPool.tokenB;
+  const currentPool = POOLS[(selectedPool as unknown) as PoolKey];
+  let poolAddress: string | undefined = undefined;
+  if (typeof selectedPool === 'string' && selectedPool.startsWith('CUSTOM:')) {
+    poolAddress = selectedPool.split(':')[1];
+  } else if (currentPool) {
+    poolAddress = currentPool.address;
+  }
+
+  const tokenA = currentPool?.tokenA;
+  const tokenB = currentPool?.tokenB;
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -62,6 +76,18 @@ export default function RemoveLiquidityPage() {
     functionName: 'tokenB',
   });
 
+  // Load custom pools from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('customPools');
+      if (stored) setCustomPools(JSON.parse(stored));
+    } catch (e) {
+      console.error('Error loading custom pools:', e);
+    }
+  }, []);
+
+  // ...existing code...
+
   // Token balances
   const { data: usdcBalance } = useReadContract({
     address: CONTRACTS.USDC,
@@ -94,6 +120,14 @@ export default function RemoveLiquidityPage() {
     if (tokenAddress === TOKENS.NATIVE.address) return 'NATIVE';
     return 'USDC'; // fallback
   };
+
+  const displayTokenAKey = ((typeof selectedPool === 'string' && selectedPool.startsWith('CUSTOM:'))
+    ? (poolTokenA ? getTokenKeyFromAddress(String(poolTokenA)) : (tokenA as TokenKey) ?? 'USDC')
+    : (tokenA as TokenKey)) as TokenKey;
+
+  const displayTokenBKey = ((typeof selectedPool === 'string' && selectedPool.startsWith('CUSTOM:'))
+    ? (poolTokenB ? getTokenKeyFromAddress(String(poolTokenB)) : (tokenB as TokenKey) ?? 'USDC')
+    : (tokenB as TokenKey)) as TokenKey;
 
   const getTokenBalance = (tokenKey: TokenKey) => {
     switch (tokenKey) {
@@ -258,16 +292,16 @@ export default function RemoveLiquidityPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex items-center -space-x-2">
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
-                      {TOKENS[tokenA].icon}
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
+                      {TOKENS[displayTokenAKey].icon}
                     </div>
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                      {TOKENS[tokenB].icon}
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-sm font-bold`}>
+                      {TOKENS[displayTokenBKey].icon}
                     </div>
                   </div>
                   <div>
-                    <div className="font-medium">{currentPool.name}</div>
-                    <div className="text-sm text-[var(--muted-text)]">{currentPool.description}</div>
+                    <div className="font-medium">{currentPool?.name ?? (customPools.find(p=>p.poolAddress===poolAddress)?.pairName || poolAddress)}</div>
+                    <div className="text-sm text-[var(--muted-text)]">{currentPool?.description ?? ''}</div>
                   </div>
                 </div>
                 <div className="text-[var(--muted-text)]">
@@ -305,6 +339,36 @@ export default function RemoveLiquidityPage() {
                       )}
                     </button>
                   ))}
+                  {customPools.length > 0 && (
+                    <div className="border-t border-white/5">
+                      {customPools.map((p) => (
+                        <button
+                          key={p.poolAddress}
+                          onClick={() => {
+                            setSelectedPool(`CUSTOM:${p.poolAddress}`);
+                            setShowPoolSelect(false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${selectedPool === `CUSTOM:${p.poolAddress}` ? 'bg-[var(--primary-color)]/10' : ''}`}
+                        >
+                          <div className="flex items-center -space-x-2">
+                            <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                              {TOKENS[displayTokenAKey].icon}
+                            </div>
+                            <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                              {TOKENS[displayTokenBKey].icon}
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <div className="font-medium">{p.pairName}</div>
+                            <div className="text-sm text-[var(--muted-text)]">{p.poolAddress}</div>
+                          </div>
+                          {selectedPool === `CUSTOM:${p.poolAddress}` && (
+                            <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

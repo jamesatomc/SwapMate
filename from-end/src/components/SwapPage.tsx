@@ -2,39 +2,52 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
-import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { parseUnits, formatUnits, Address } from 'viem';
+import { CONTRACTS, SWAP_ABI, KANARI_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import TokenManager, { CustomToken } from './TokenManager';
+import TokenSelector, { ExtendedToken, getTokenInfo } from './TokenSelector';
 
 export default function SwapPage() {
   const { address, isConnected } = useAccount();
   
-  // State for swap
-  const [tokenIn, setTokenIn] = useState<TokenKey>('USDC');
-  const [tokenOut, setTokenOut] = useState<TokenKey>('KANARI');
+  // State for swapping
+  const [tokenIn, setTokenIn] = useState<string>('KANARI');
+  const [tokenOut, setTokenOut] = useState<string>('NATIVE');
   const [amountIn, setAmountIn] = useState('');
   const [amountOut, setAmountOut] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [isSwapping, setIsSwapping] = useState(false);
-  const [showTokenSelectIn, setShowTokenSelectIn] = useState(false);
-  const [showTokenSelectOut, setShowTokenSelectOut] = useState(false);
-  const [currentPool, setCurrentPool] = useState<PoolKey>('KANARI-USDC');
+  const [showTokenManager, setShowTokenManager] = useState(false);
+  const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
+  const [priceImpact, setPriceImpact] = useState('0');
 
-  // Contract reads - Native balance
-  const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
+  // Find available pools
+  const availablePool = Object.values(POOLS).find(pool => 
+    (pool.tokenA === tokenIn && pool.tokenB === tokenOut) ||
+    (pool.tokenA === tokenOut && pool.tokenB === tokenIn)
+  );
+
+  const poolAddress = availablePool?.address;
+
+  // Load custom tokens
+  useEffect(() => {
+    const stored = localStorage.getItem('customTokens');
+    if (stored) {
+      try {
+        setCustomTokens(JSON.parse(stored));
+      } catch (e) {
+        console.error('Error loading custom tokens:', e);
+      }
+    }
+  }, []);
+
+  // Token balances
+  const { data: nativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address }
   });
 
-  // Token balances
-  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
-    address: CONTRACTS.USDC,
-    abi: USDC_ABI,
-    functionName: 'balanceOf',
-    args: [address as Address],
-    query: { enabled: !!address }
-  });
-
-  const { data: kanariBalance, refetch: refetchKanariBalance } = useReadContract({
+  const { data: kanariBalance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'balanceOf',
@@ -42,284 +55,184 @@ export default function SwapPage() {
     query: { enabled: !!address }
   });
 
-  // Helper function to find the pool for two tokens
-  const findPoolForTokens = (tokenA: TokenKey, tokenB: TokenKey): PoolKey | null => {
-    const poolEntries = Object.entries(POOLS) as [PoolKey, typeof POOLS[PoolKey]][];
-    
-    for (const [poolKey, pool] of poolEntries) {
-      if ((pool.tokenA === tokenA && pool.tokenB === tokenB) || 
-          (pool.tokenA === tokenB && pool.tokenB === tokenA)) {
-        return poolKey;
-      }
-    }
-    return null;
-  };
+  // Token allowances
+  const { data: kanariAllowance } = useReadContract({
+    address: CONTRACTS.KANARI,
+    abi: KANARI_ABI,
+    functionName: 'allowance',
+    args: [address as Address, poolAddress as Address],
+    query: { enabled: !!address && !!poolAddress }
+  });
 
-  // Update current pool when tokens change
-  useEffect(() => {
-    const pool = findPoolForTokens(tokenIn, tokenOut);
-    if (pool) {
-      setCurrentPool(pool);
-    }
-  }, [tokenIn, tokenOut]);
-
-  // Get current pool address
-  const getCurrentPoolAddress = () => {
-    return POOLS[currentPool].address;
-  };
-
-  const { data: reserves, refetch: refetchReserves } = useReadContract({
-    address: getCurrentPoolAddress(),
+  // Get swap quote
+  const { data: swapQuote } = useReadContract({
+    address: poolAddress as Address,
     abi: SWAP_ABI,
-    functionName: 'getReserves',
+    functionName: 'getAmountOut',
+    args: [
+      amountIn ? parseUnits(amountIn, getTokenInfo(tokenIn, customTokens)?.decimals || 18) : BigInt(0),
+      getTokenInfo(tokenIn, customTokens)?.address as Address
+    ],
+    query: { enabled: !!poolAddress && !!amountIn && parseFloat(amountIn) > 0 }
   });
 
-  // Token allowances - update to use current pool address
-  const { data: usdcAllowance, refetch: refetchUsdcAllowance } = useReadContract({
-    address: CONTRACTS.USDC,
-    abi: USDC_ABI,
-    functionName: 'allowance',
-    args: [address as Address, getCurrentPoolAddress()],
-    query: { enabled: !!address && (tokenIn === 'USDC' || tokenOut === 'USDC') }
+  // Get price impact
+  const { data: priceImpactData } = useReadContract({
+    address: poolAddress as Address,
+    abi: SWAP_ABI,
+    functionName: 'getPriceImpact',
+    args: [
+      amountIn ? parseUnits(amountIn, getTokenInfo(tokenIn, customTokens)?.decimals || 18) : BigInt(0),
+      getTokenInfo(tokenIn, customTokens)?.address as Address
+    ],
+    query: { enabled: !!poolAddress && !!amountIn && parseFloat(amountIn) > 0 }
   });
-
-  const { data: kanariAllowance, refetch: refetchKanariAllowance } = useReadContract({
-    address: CONTRACTS.KANARI,
-    abi: KANARI_ABI,
-    functionName: 'allowance',
-    args: [address as Address, getCurrentPoolAddress()],
-    query: { enabled: !!address && (tokenIn === 'KANARI' || tokenOut === 'KANARI') }
-  });
-
 
   // Contract writes
-  const { writeContract: writeApprove, data: approveHash } = useWriteContract();
   const { writeContract: writeSwap, data: swapHash } = useWriteContract();
-
-  const { isLoading: isApproving } = useWaitForTransactionReceipt({
-    hash: approveHash,
-  });
+  const { writeContract: writeApprove } = useWriteContract();
 
   const { isLoading: isSwapPending } = useWaitForTransactionReceipt({
     hash: swapHash,
   });
 
-  // When approve transaction finishes, refresh allowances and balances
-  useEffect(() => {
-    if (approveHash && !isApproving) {
-      try {
-        refetchUsdcAllowance?.();
-        refetchKanariAllowance?.();
-        refetchUsdcBalance?.();
-        refetchKanariBalance?.();
-        refetchNativeBalance?.();
-      } catch (e) {
-        // ignore
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveHash, isApproving]);
-
-  // When swap transaction finishes, refresh reserves, balances and allowances and clear inputs
-  useEffect(() => {
-    if (swapHash && !isSwapPending) {
-      try {
-        refetchReserves?.();
-        refetchUsdcBalance?.();
-        refetchKanariBalance?.();
-        refetchNativeBalance?.();
-        refetchUsdcAllowance?.();
-        refetchKanariAllowance?.();
-      } catch (e) {
-        // ignore
-      }
-
-      // clear inputs to reflect updated state
-      setAmountIn('');
-      setAmountOut('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [swapHash, isSwapPending]);
-
   // Helper functions
-  const getTokenBalance = (tokenKey: TokenKey) => {
-    switch (tokenKey) {
-      case 'NATIVE':
-        return nativeBalance?.value || BigInt(0);
-      case 'USDC':
-        return usdcBalance || BigInt(0);
-      case 'KANARI':
-        return kanariBalance || BigInt(0);
-      default:
-        return BigInt(0);
+  const getTokenBalance = (tokenKey: string) => {
+    if (tokenKey === 'NATIVE') {
+      return nativeBalance?.value || BigInt(0);
+    } else if (tokenKey === 'KANARI') {
+      return kanariBalance || BigInt(0);
     }
+    return BigInt(0);
   };
 
-  const getTokenAllowance = (tokenKey: TokenKey) => {
-    switch (tokenKey) {
-      case 'NATIVE':
-        return BigInt(0); // Native doesn't need approval
-      case 'USDC':
-        return usdcAllowance || BigInt(0);
-      case 'KANARI':
-        return kanariAllowance || BigInt(0);
-      default:
-        return BigInt(0);
+  const getTokenAllowance = (tokenKey: string) => {
+    if (tokenKey === 'NATIVE') {
+      return BigInt(0);
+    } else if (tokenKey === 'KANARI') {
+      return kanariAllowance || BigInt(0);
     }
+    return BigInt(0);
   };
 
-  const getTokenDecimals = (tokenKey: TokenKey) => {
-    return TOKENS[tokenKey].decimals;
-  };
-
-  const isNativeToken = (tokenKey: TokenKey) => {
+  const isNativeToken = (tokenKey: string) => {
     return tokenKey === 'NATIVE';
   };
 
-  const getBalance = (tokenKey: TokenKey) => {
+  const getBalance = (tokenKey: string) => {
     const balance = getTokenBalance(tokenKey);
-    const decimals = getTokenDecimals(tokenKey);
-    return balance ? formatUnits(balance, decimals) : '0';
+    const token = getTokenInfo(tokenKey, customTokens);
+    if (!token) return '0';
+    return balance ? formatUnits(balance, token.decimals) : '0';
   };
 
-  
-
-  // Calculate output amount
-  useEffect(() => {
-    if (!amountIn || !reserves || parseFloat(amountIn) <= 0) {
-      setAmountOut('');
-      return;
-    }
+  const needsApproval = (tokenKey: string, amount: string) => {
+    if (!amount || isNativeToken(tokenKey)) return false;
+    
+    const token = getTokenInfo(tokenKey, customTokens);
+    if (!token) return false;
 
     try {
-      const [reserveA, reserveB] = reserves as [bigint, bigint];
-      const amountInWei = parseUnits(amountIn, getTokenDecimals(tokenIn));
-      
-      // Determine which reserve corresponds to which token based on current pool
-      const pool = POOLS[currentPool];
-      const isTokenInFirst = pool.tokenA === tokenIn;
-      const reserveIn = isTokenInFirst ? reserveA : reserveB;
-      const reserveOut = isTokenInFirst ? reserveB : reserveA;
-      
-      // Calculate output using AMM formula with 0.3% fee
-      const feeBps = BigInt(30); // 0.3%
-      const bps = BigInt(10000);
-      const amountInWithFee = (amountInWei * (bps - feeBps)) / bps;
-      
-      const numerator = amountInWithFee * reserveOut;
-      const denominator = reserveIn + amountInWithFee;
-      const amountOutWei = numerator / denominator;
-      
-      setAmountOut(formatUnits(amountOutWei, getTokenDecimals(tokenOut)));
-    } catch (error) {
-      console.error('Error calculating output:', error);
+      const amountWei = parseUnits(amount, token.decimals);
+      const allowance = getTokenAllowance(tokenKey);
+      return allowance < amountWei;
+    } catch (e) {
+      return true;
+    }
+  };
+
+  // Update output amount when input changes
+  useEffect(() => {
+    if (swapQuote && tokenOut) {
+      const tokenOutInfo = getTokenInfo(tokenOut, customTokens);
+      if (tokenOutInfo) {
+        const outputAmount = formatUnits(swapQuote, tokenOutInfo.decimals);
+        setAmountOut(outputAmount);
+      }
+    } else {
       setAmountOut('');
     }
-  }, [amountIn, tokenIn, tokenOut, reserves, currentPool]);
+  }, [swapQuote, tokenOut, customTokens]);
 
-  const switchTokens = () => {
-    setTokenIn(tokenOut);
-    setTokenOut(tokenIn);
-    setAmountIn(amountOut);
-    setAmountOut('');
-  };
-
-  // Token selection handlers
-  const handleTokenSelect = (tokenKey: TokenKey, isTokenIn: boolean) => {
-    if (isTokenIn) {
-      if (tokenKey === tokenOut) {
-        setTokenOut(tokenIn);
-      }
-      setTokenIn(tokenKey);
-      setShowTokenSelectIn(false);
+  // Update price impact
+  useEffect(() => {
+    if (priceImpactData) {
+      const impact = (Number(priceImpactData) / 100).toFixed(2);
+      setPriceImpact(impact);
     } else {
-      if (tokenKey === tokenIn) {
-        setTokenIn(tokenOut);
-      }
-      setTokenOut(tokenKey);
-      setShowTokenSelectOut(false);
+      setPriceImpact('0');
     }
+  }, [priceImpactData]);
+
+  // Handlers
+  const handleTokenInSelect = (tokenKey: string, token: ExtendedToken) => {
+    setTokenIn(tokenKey);
     setAmountIn('');
     setAmountOut('');
-    
-    // Check if the new token pair has a valid pool
-    const newTokenIn = isTokenIn ? tokenKey : tokenIn;
-    const newTokenOut = isTokenIn ? tokenOut : tokenKey;
-    const pool = findPoolForTokens(newTokenIn, newTokenOut);
-    if (!pool) {
-      // If no pool exists, try to find a valid token that has a pool with the selected token
-      const availableTokens = Object.keys(TOKENS) as TokenKey[];
-      for (const token of availableTokens) {
-        if (token !== tokenKey) {
-          const testPool = findPoolForTokens(tokenKey, token);
-          if (testPool) {
-            if (isTokenIn) {
-              setTokenOut(token);
-            } else {
-              setTokenIn(token);
-            }
-            break;
-          }
-        }
-      }
-    }
   };
 
-  const handleApprove = async () => {
-    if (!address || isNativeToken(tokenIn)) return;
-    
-    const tokenAddress = TOKENS[tokenIn].address as Address;
-    const abi = tokenIn === 'USDC' ? USDC_ABI : KANARI_ABI;
+  const handleTokenOutSelect = (tokenKey: string, token: ExtendedToken) => {
+    setTokenOut(tokenKey);
+    setAmountOut('');
+  };
 
-    writeApprove({
-      address: tokenAddress,
-      abi,
-      functionName: 'approve',
-      args: [getCurrentPoolAddress(), parseUnits('1000000', getTokenDecimals(tokenIn))], // Approve large amount
-    });
+  const handleSwapTokens = () => {
+    const tempIn = tokenIn;
+    const tempAmountIn = amountIn;
+    
+    setTokenIn(tokenOut);
+    setTokenOut(tempIn);
+    setAmountIn(amountOut);
+    setAmountOut(tempAmountIn);
+  };
+
+  const handleApprove = async (tokenKey: string) => {
+    const token = getTokenInfo(tokenKey, customTokens);
+    if (!token || isNativeToken(tokenKey)) return;
+
+    const tokenContract = tokenKey === 'KANARI' ? CONTRACTS.KANARI : token.address;
+    const abi = KANARI_ABI; // Use KANARI_ABI for ERC20 approvals
+
+    try {
+      writeApprove({
+        address: tokenContract as Address,
+        abi,
+        functionName: 'approve',
+        args: [poolAddress as Address, parseUnits('1000000', token.decimals)],
+      });
+    } catch (error) {
+      console.error('Approval failed:', error);
+    }
   };
 
   const handleSwap = async () => {
-    if (!address || !amountIn || !amountOut) return;
-
-    // Check if valid pool exists
-    const pool = findPoolForTokens(tokenIn, tokenOut);
-    if (!pool) {
-      alert('No liquidity pool exists for this token pair');
-      return;
-    }
+    if (!amountIn || !poolAddress) return;
 
     setIsSwapping(true);
     try {
-      const amountInWei = parseUnits(amountIn, getTokenDecimals(tokenIn));
-      const amountOutWei = parseUnits(amountOut, getTokenDecimals(tokenOut));
+      const tokenInInfo = getTokenInfo(tokenIn, customTokens);
+      const tokenOutInfo = getTokenInfo(tokenOut, customTokens);
+      
+      if (!tokenInInfo || !tokenOutInfo) return;
+
+      const amountInWei = parseUnits(amountIn, tokenInInfo.decimals);
       const slippagePercent = parseFloat(slippage) / 100;
-      const minAmountOut = amountOutWei * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
+      const minAmountOut = swapQuote ? swapQuote * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000) : BigInt(0);
       
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
-      
-      // For native token support, we need to use special addresses
-      const NATIVE_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
-      const tokenInAddress = isNativeToken(tokenIn) ? NATIVE_ADDRESS : TOKENS[tokenIn].address as Address;
-      
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200);
+
+      let nativeValue = BigInt(0);
       if (isNativeToken(tokenIn)) {
-        // When swapping native token, send value with transaction
-        writeSwap({
-          address: getCurrentPoolAddress(),
-          abi: SWAP_ABI,
-          functionName: 'swap',
-          args: [tokenInAddress, amountInWei, minAmountOut, deadline],
-          value: amountInWei,
-        });
-      } else {
-        // Regular token swap
-        writeSwap({
-          address: getCurrentPoolAddress(),
-          abi: SWAP_ABI,
-          functionName: 'swap',
-          args: [tokenInAddress, amountInWei, minAmountOut, deadline],
-        });
+        nativeValue = amountInWei;
       }
+
+      writeSwap({
+        address: poolAddress as Address,
+        abi: SWAP_ABI,
+        functionName: 'swap',
+        args: [tokenInInfo.address as Address, amountInWei, minAmountOut, deadline],
+        value: nativeValue,
+      });
     } catch (error) {
       console.error('Swap failed:', error);
     } finally {
@@ -327,253 +240,184 @@ export default function SwapPage() {
     }
   };
 
-  // Check if approval is needed
-  const needsApproval = () => {
-    if (!amountIn || isNativeToken(tokenIn)) return false;
-    const amountInWei = parseUnits(amountIn, getTokenDecimals(tokenIn));
-    const allowance = getTokenAllowance(tokenIn);
-    return !allowance || allowance < amountInWei;
-  };
-
-  // Token selector component
-  const TokenSelector = ({ 
-    isOpen, 
-    onClose, 
-    onSelect, 
-    selectedToken, 
-    otherToken, 
-    isTokenIn
-  }: { 
-    isOpen: boolean; 
-    onClose: () => void; 
-    onSelect: (token: TokenKey) => void; 
-    selectedToken: TokenKey; 
-    otherToken: TokenKey; 
-    isTokenIn: boolean;
-  }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-white/10 rounded-xl shadow-xl z-50">
-        {Object.entries(TOKENS).map(([key, token]) => (
-          <button
-            key={key}
-            onClick={() => onSelect(key as TokenKey)}
-            className="w-full flex items-center gap-3 p-3 hover:bg-[var(--background)]/50 transition-colors first:rounded-t-xl last:rounded-b-xl"
-          >
-            <div className={`w-8 h-8 rounded-full ${token.color} flex items-center justify-center text-white text-sm font-bold`}>
-              {token.icon}
-            </div>
-            <div className="flex-1 text-left">
-              <div className="font-medium">{token.symbol}</div>
-              <div className="text-sm text-[var(--muted-text)]">{token.name}</div>
-            </div>
-            <div className="text-sm text-[var(--muted-text)]">
-              {parseFloat(getBalance(key as TokenKey)).toFixed(4)}
-            </div>
-          </button>
-        ))}
-      </div>
-    );
-  };
-
   return (
-    <div className="max-w-md mx-auto">
+    <div className="max-w-md mx-auto space-y-6">
+      {/* Token Manager Toggle */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowTokenManager(!showTokenManager)}
+          className="px-4 py-2 bg-[var(--primary-color)] text-white font-medium rounded-lg hover:bg-[var(--primary-color)]/80 transition flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+          </svg>
+          {showTokenManager ? 'Hide' : 'Manage'} Tokens
+        </button>
+      </div>
+
+      {/* Token Manager */}
+      {showTokenManager && (
+        <TokenManager 
+          onTokenAdded={(token) => {
+            setCustomTokens(prev => [...prev, token]);
+          }}
+          onClose={() => setShowTokenManager(false)}
+        />
+      )}
+
+      {/* Swap Form */}
       <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
-        {/* Pool Indicator */}
-        <div className="mb-4 p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-[var(--muted-text)]">Trading Pool:</span>
-            <span className="text-sm font-medium">
-              {findPoolForTokens(tokenIn, tokenOut) ? POOLS[currentPool].name : 'No Pool Available'}
-            </span>
-          </div>
-          {!findPoolForTokens(tokenIn, tokenOut) && (
-            <div className="mt-2 text-xs text-red-400">
-              No liquidity pool exists for this token pair. Please select different tokens.
-            </div>
-          )}
-        </div>
-
         <div className="space-y-4">
-          {/* From Token */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-[var(--muted-text)]">From</label>
-              <span className="text-sm text-[var(--muted-text)]">
-                Balance: {parseFloat(getBalance(tokenIn)).toFixed(4)} {TOKENS[tokenIn].symbol}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
-              <div className="relative">
-                <button
-                  onClick={() => setShowTokenSelectIn(true)}
-                  className="flex items-center gap-2 min-w-0 hover:bg-[var(--background)]/30 rounded-lg p-2 transition-colors"
-                >
-                  <div className={`w-8 h-8 rounded-full ${TOKENS[tokenIn].color} flex items-center justify-center text-white text-sm font-bold`}>
-                    {TOKENS[tokenIn].icon}
-                  </div>
-                  <span className="font-medium">{TOKENS[tokenIn].symbol}</span>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                <TokenSelector
-                  isOpen={showTokenSelectIn}
-                  onClose={() => setShowTokenSelectIn(false)}
-                  onSelect={(token) => handleTokenSelect(token, true)}
-                  selectedToken={tokenIn}
-                  otherToken={tokenOut}
-                  isTokenIn={true}
-                />
-              </div>
-              <input
-                type="text"
-                placeholder="0.0"
-                value={amountIn}
-                onChange={(e) => setAmountIn(e.target.value)}
-                className="flex-1 bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
+          <h2 className="text-xl font-bold text-[var(--text-color)]">Swap Tokens</h2>
+
+          {/* Token In */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-[var(--muted-text)]">From</label>
+            <div className="space-y-2">
+              <TokenSelector
+                selectedToken={tokenIn}
+                onTokenSelect={handleTokenInSelect}
+                excludeTokens={[tokenOut]}
               />
+              
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  value={amountIn}
+                  onChange={(e) => setAmountIn(e.target.value)}
+                  placeholder="0.0"
+                  className="flex-1 px-4 py-3 bg-[var(--background)]/50 rounded-xl border border-white/5 focus:border-[var(--primary-color)]/50 outline-none text-[var(--text-color)] placeholder-[var(--muted-text)]"
+                />
+                <button
+                  onClick={() => setAmountIn(getBalance(tokenIn))}
+                  className="px-3 py-1 text-sm text-[var(--primary-color)] hover:text-[var(--primary-color)]/80 transition"
+                >
+                  MAX
+                </button>
+              </div>
+              
+              <div className="text-sm text-[var(--muted-text)]">
+                Balance: {getBalance(tokenIn)}
+              </div>
             </div>
           </div>
 
-          {/* Switch Button */}
+          {/* Swap Arrow */}
           <div className="flex justify-center">
             <button
-              onClick={switchTokens}
-              className="p-2 rounded-lg bg-[var(--surface)] border border-white/10 hover:bg-[var(--background)]/80 transition-colors"
+              onClick={handleSwapTokens}
+              className="w-8 h-8 rounded-full bg-[var(--surface)] border border-white/10 flex items-center justify-center hover:bg-[var(--background)]/80 transition"
+              title="Swap tokens"
             >
-              <svg className="w-5 h-5 text-[var(--text-color)]" viewBox="0 0 24 24" fill="none">
-                <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
               </svg>
             </button>
           </div>
 
-          {/* To Token */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-[var(--muted-text)]">To</label>
-              <span className="text-sm text-[var(--muted-text)]">
-                Balance: {parseFloat(getBalance(tokenOut)).toFixed(4)} {TOKENS[tokenOut].symbol}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
-              <div className="relative">
-                <button
-                  onClick={() => setShowTokenSelectOut(true)}
-                  className="flex items-center gap-2 min-w-0 hover:bg-[var(--background)]/30 rounded-lg p-2 transition-colors"
-                >
-                  <div className={`w-8 h-8 rounded-full ${TOKENS[tokenOut].color} flex items-center justify-center text-white text-sm font-bold`}>
-                    {TOKENS[tokenOut].icon}
-                  </div>
-                  <span className="font-medium">{TOKENS[tokenOut].symbol}</span>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                <TokenSelector
-                  isOpen={showTokenSelectOut}
-                  onClose={() => setShowTokenSelectOut(false)}
-                  onSelect={(token) => handleTokenSelect(token, false)}
-                  selectedToken={tokenOut}
-                  otherToken={tokenIn}
-                  isTokenIn={false}
+          {/* Token Out */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-[var(--muted-text)]">To</label>
+            <div className="space-y-2">
+              <TokenSelector
+                selectedToken={tokenOut}
+                onTokenSelect={handleTokenOutSelect}
+                excludeTokens={[tokenIn]}
+              />
+              
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  value={amountOut}
+                  readOnly
+                  placeholder="0.0"
+                  className="flex-1 px-4 py-3 bg-[var(--background)]/30 rounded-xl border border-white/5 outline-none text-[var(--text-color)] placeholder-[var(--muted-text)]"
                 />
               </div>
-              <input
-                type="text"
-                placeholder="0.0"
-                value={amountOut}
-                readOnly
-                className="flex-1 bg-transparent text-right text-lg font-medium text-[var(--muted-text)] outline-none"
-              />
+              
+              <div className="text-sm text-[var(--muted-text)]">
+                Balance: {getBalance(tokenOut)}
+              </div>
             </div>
           </div>
 
           {/* Slippage Settings */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <label className="text-sm font-medium text-[var(--muted-text)]">Slippage Tolerance</label>
-            <div className="flex gap-2">
-              {['0.1', '0.5', '1.0'].map((preset) => (
-                <button
-                  key={preset}
-                  onClick={() => setSlippage(preset)}
-                  className={`px-3 py-1 rounded-lg text-sm transition ${
-                    slippage === preset
-                      ? 'bg-[var(--primary-color)] text-white'
-                      : 'bg-[var(--background)]/50 text-[var(--text-color)] hover:bg-[var(--background)]/80'
-                  }`}
-                >
-                  {preset}%
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
               <input
-                type="text"
+                type="number"
                 value={slippage}
                 onChange={(e) => setSlippage(e.target.value)}
                 className="flex-1 px-3 py-1 bg-[var(--background)]/50 rounded-lg text-sm text-center outline-none border border-white/5 focus:border-[var(--primary-color)]/50"
                 placeholder="0.5"
               />
+              <span className="text-sm text-[var(--muted-text)]">%</span>
             </div>
           </div>
 
-          {/* Action Button */}
+          {/* Swap Information */}
+          {amountIn && amountOut && (
+            <div className="p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
+              <h4 className="text-sm font-medium text-[var(--text-color)] mb-2">Swap Details</h4>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-text)]">Price Impact</span>
+                  <span className={`${parseFloat(priceImpact) > 5 ? 'text-red-500' : parseFloat(priceImpact) > 2 ? 'text-yellow-500' : 'text-green-500'}`}>
+                    {priceImpact}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--muted-text)]">Minimum Received</span>
+                  <span className="text-[var(--text-color)]">
+                    {swapQuote ? formatUnits(
+                      swapQuote * BigInt(Math.floor((1 - parseFloat(slippage) / 100) * 10000)) / BigInt(10000),
+                      getTokenInfo(tokenOut, customTokens)?.decimals || 18
+                    ) : '0'} {getTokenInfo(tokenOut, customTokens)?.symbol}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pool Status */}
+          {!availablePool && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <div className="text-red-500 text-sm font-medium">⚠️ No liquidity pool available for this pair</div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
           {!isConnected ? (
             <div className="text-center py-4 text-[var(--muted-text)]">
               Please connect your wallet
             </div>
-          ) : !findPoolForTokens(tokenIn, tokenOut) ? (
-            <div className="text-center py-4 text-red-400">
-              No liquidity pool available for this token pair
-            </div>
-          ) : needsApproval() ? (
+          ) : !availablePool ? (
             <button
-              onClick={handleApprove}
-              disabled={isApproving || !amountIn}
-              className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              disabled
+              className="w-full py-4 bg-gray-500 text-white font-medium rounded-xl cursor-not-allowed"
             >
-              {isApproving ? 'Approving...' : `Approve ${TOKENS[tokenIn].symbol}`}
+              No Pool Available
+            </button>
+          ) : needsApproval(tokenIn, amountIn) ? (
+            <button
+              onClick={() => handleApprove(tokenIn)}
+              className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/80 transition"
+            >
+              Approve {getTokenInfo(tokenIn, customTokens)?.symbol}
             </button>
           ) : (
             <button
               onClick={handleSwap}
-              disabled={isSwapping || isSwapPending || !amountIn || !amountOut}
-              className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              disabled={isSwapping || isSwapPending || !amountIn || !amountOut || parseFloat(priceImpact) > 10}
+              className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/80 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {isSwapping || isSwapPending ? 'Swapping...' : 'Swap'}
+              {isSwapping || isSwapPending ? 'Swapping...' : 
+               parseFloat(priceImpact) > 10 ? 'Price Impact Too High' : 'Swap'}
             </button>
-          )}
-
-          {/* Trade Info */}
-          {amountOut && (
-            <div className="space-y-2 p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
-              <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Exchange Rate</span>
-                <span>1 {TOKENS[tokenIn].symbol} = {(parseFloat(amountOut) / parseFloat(amountIn || '1')).toFixed(6)} {TOKENS[tokenOut].symbol}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Slippage Tolerance</span>
-                <span>{slippage}%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Minimum Received</span>
-                <span>{(parseFloat(amountOut) * (1 - parseFloat(slippage) / 100)).toFixed(6)} {TOKENS[tokenOut].symbol}</span>
-              </div>
-            </div>
           )}
         </div>
       </div>
-
-      {/* Click outside to close token selectors */}
-      {(showTokenSelectIn || showTokenSelectOut) && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => {
-            setShowTokenSelectIn(false);
-            setShowTokenSelectOut(false);
-          }}
-        />
-      )}
     </div>
   );
 }

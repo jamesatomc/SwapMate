@@ -9,18 +9,66 @@ export default function AddLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
+  // allow selecting built-in pools (keys in POOLS) or custom pools saved to localStorage as 'CUSTOM:<address>'
+  const [selectedPool, setSelectedPool] = useState<string>('KANARI-NATIVE');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [isAddingLiquidity, setIsAddingLiquidity] = useState(false);
   const [showPoolSelect, setShowPoolSelect] = useState(false);
 
-  // Get current pool info
-  const currentPool = POOLS[selectedPool];
-  const poolAddress = currentPool.address;
-  const tokenA = currentPool.tokenA;
-  const tokenB = currentPool.tokenB;
+  // Load custom pools saved by CreatePairPage (persisted to localStorage)
+  const [customPools, setCustomPools] = useState<any[]>([]);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('customPools');
+      if (stored) setCustomPools(JSON.parse(stored));
+    } catch (e) {
+      console.error('Error loading custom pools:', e);
+    }
+  }, []);
+
+  // Helper to map token address ->TokenKey when possible
+  const getTokenKeyFromAddress = (tokenAddress?: string): TokenKey => {
+    if (!tokenAddress) return 'USDC';
+    const lower = tokenAddress.toLowerCase();
+    for (const k of Object.keys(TOKENS) as TokenKey[]) {
+      if (TOKENS[k].address.toLowerCase() === lower) return k;
+    }
+    return 'USDC';
+  };
+
+  // Resolve current pool info whether built-in or custom
+  const isCustomSelection = selectedPool.startsWith('CUSTOM:');
+  const poolAddress = isCustomSelection ? selectedPool.split(':')[1] : (POOLS[selectedPool as PoolKey]?.address);
+  // If custom, try to find token keys saved with the custom pool entry
+  let tokenA: TokenKey = 'USDC';
+  let tokenB: TokenKey = 'USDC';
+  let currentPoolName = '';
+  let currentPoolDescription = '';
+  if (isCustomSelection) {
+    const poolAddr = poolAddress?.toLowerCase();
+    const found = customPools.find((p) => p.poolAddress && String(p.poolAddress).toLowerCase() === poolAddr);
+    if (found) {
+      tokenA = (found.tokenAKey as TokenKey) || (found.tokenAAddress ? getTokenKeyFromAddress(found.tokenAAddress) : 'USDC');
+      tokenB = (found.tokenBKey as TokenKey) || (found.tokenBAddress ? getTokenKeyFromAddress(found.tokenBAddress) : 'USDC');
+      currentPoolName = found.pairName || `${TOKENS[tokenA].symbol}/${TOKENS[tokenB].symbol}`;
+      currentPoolDescription = 'Custom pool';
+    } else {
+      // fallback: try to read on-chain token ordering later via contract reads
+      tokenA = 'USDC';
+      tokenB = 'KANARI';
+      currentPoolName = poolAddress || 'Custom Pool';
+      currentPoolDescription = 'Custom pool';
+    }
+  } else {
+    const built = POOLS[selectedPool as PoolKey] || {} as any;
+    tokenA = built.tokenA || 'USDC';
+    tokenB = built.tokenB || 'KANARI';
+    currentPoolName = built.name || `${TOKENS[tokenA].symbol}/${TOKENS[tokenB].symbol}`;
+    currentPoolDescription = built.description || '';
+  }
+  const currentPool = { address: poolAddress, tokenA, tokenB, name: currentPoolName, description: currentPoolDescription } as any;
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -463,6 +511,47 @@ export default function AddLiquidityPage() {
                       )}
                     </button>
                   ))}
+
+                  {/* Custom pools saved in localStorage (created via CreatePairPage) */}
+                  {customPools && customPools.length > 0 && (
+                    <div className="border-t border-white/5">
+                      {customPools.map((p) => {
+                        const addr = String(p.poolAddress || p.poolAddress).toLowerCase();
+                        const key = `CUSTOM:${addr}`;
+                        const aKey = (p.tokenAKey as TokenKey) || getTokenKeyFromAddress(p.tokenAAddress);
+                        const bKey = (p.tokenBKey as TokenKey) || getTokenKeyFromAddress(p.tokenBAddress);
+                        const name = p.pairName || `${TOKENS[aKey].symbol}/${TOKENS[bKey].symbol}`;
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setSelectedPool(key);
+                              setShowPoolSelect(false);
+                            }}
+                            className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
+                              selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
+                            }`}
+                          >
+                            <div className="flex items-center -space-x-2">
+                              <div className={`w-6 h-6 rounded-full ${TOKENS[aKey].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                                {TOKENS[aKey].icon}
+                              </div>
+                              <div className={`w-6 h-6 rounded-full ${TOKENS[bKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                                {TOKENS[bKey].icon}
+                              </div>
+                            </div>
+                            <div className="text-left">
+                              <div className="font-medium">{name}</div>
+                              <div className="text-sm text-[var(--muted-text)]">Custom pool: {p.poolAddress}</div>
+                            </div>
+                            {selectedPool === key && (
+                              <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

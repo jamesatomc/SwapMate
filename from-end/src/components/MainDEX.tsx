@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import SwapPage from './SwapPage';
 import AddLiquidityPage from './AddLiquidityPage';
-import RemoveLiquidityPage from './RemoveLiquidityPage';
+import SwapPage from './SwapPage';
+import CreatePairPage from './CreatePairPage';
 import MintPage from './MintPage';
+import RemoveLiquidityPage from './RemoveLiquidityPage';
 import FarmingPage from './FarmingPage';
 
-type Page = 'swap' | 'add' | 'remove' | 'mint' | 'farm';
+type Page = 'swap' | 'add' |  'create' | 'remove' | 'mint' | 'farm';
 
 export default function MainDEX() {
   const [currentPage, setCurrentPage] = useState<Page>('swap');
@@ -53,7 +54,7 @@ export default function MainDEX() {
                 aria-pressed={currentPage === 'swap'}
               >
                 <span className="inline-flex items-center gap-2">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <span className="hidden sm:inline">Swap</span>
                   <span className="sm:hidden">Swap</span>
                 </span>
@@ -65,9 +66,21 @@ export default function MainDEX() {
                 aria-pressed={currentPage === 'add'}
               >
                 <span className="inline-flex items-center gap-2">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <span className="hidden sm:inline">Add</span>
                   <span className="sm:hidden">Add</span>
+                </span>
+              </button>
+
+              <button
+                className={`min-w-[96px] flex-0 flex items-center justify-center whitespace-nowrap px-4 py-3 rounded-lg text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-offset-2 ${currentPage === 'create' ? 'bg-[var(--primary-color)] text-white shadow' : 'text-[var(--text-color)] bg-[var(--surface)]/40 hover:bg-[var(--surface)]/60'}`}
+                onClick={() => setCurrentPage('create')}
+                aria-pressed={currentPage === 'create'}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" fill="none" /></svg>
+                  <span className="hidden sm:inline">Create Pair</span>
+                  <span className="sm:hidden">Create</span>
                 </span>
               </button>
 
@@ -77,7 +90,7 @@ export default function MainDEX() {
                 aria-pressed={currentPage === 'remove'}
               >
                 <span className="inline-flex items-center gap-2">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <span className="hidden sm:inline">Remove</span>
                   <span className="sm:hidden">Remove</span>
                 </span>
@@ -89,7 +102,7 @@ export default function MainDEX() {
                 aria-pressed={currentPage === 'mint'}
               >
                 <span className="inline-flex items-center gap-2">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 5v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <span className="hidden sm:inline">Mint</span>
                   <span className="sm:hidden">Mint</span>
                 </span>
@@ -101,7 +114,7 @@ export default function MainDEX() {
                 aria-pressed={currentPage === 'farm'}
               >
                 <span className="inline-flex items-center gap-2">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <span className="hidden sm:inline">Farm</span>
                   <span className="sm:hidden">Farm</span>
                 </span>
@@ -111,6 +124,7 @@ export default function MainDEX() {
             <div>
               {currentPage === 'swap' && <SwapPage />}
               {currentPage === 'add' && <AddLiquidityPage />}
+              {currentPage === 'create' && <CreatePairPage />}
               {currentPage === 'remove' && <RemoveLiquidityPage />}
               {currentPage === 'mint' && <MintPage />}
               {currentPage === 'farm' && <FarmingPage />}
