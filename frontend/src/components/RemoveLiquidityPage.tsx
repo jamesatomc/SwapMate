@@ -4,12 +4,21 @@ import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
 import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { useAllTokens } from './TokenManager';
+
+type CustomPool = {
+  poolAddress: string;
+  tokenAKey?: string;
+  tokenBKey?: string;
+  pairName?: string;
+};
 
 export default function RemoveLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for removing liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
+  const [selectedPool, setSelectedPool] = useState<string>('KANARI-NATIVE');
+  const [customPools, setCustomPools] = useState<CustomPool[]>([]);
   const [lpAmount, setLpAmount] = useState('');
   const [percentage, setPercentage] = useState('25');
   const [slippage, setSlippage] = useState('0.5');
@@ -17,13 +26,19 @@ export default function RemoveLiquidityPage() {
   const [showPoolSelect, setShowPoolSelect] = useState(false);
 
   // Get current pool info
-  const currentPool = POOLS[selectedPool];
-  const poolAddress = currentPool.address;
-  const tokenA = currentPool.tokenA;
-  const tokenB = currentPool.tokenB;
+  const currentPool = POOLS[(selectedPool as unknown) as PoolKey];
+  let poolAddress: string | undefined = undefined;
+  if (typeof selectedPool === 'string' && selectedPool.startsWith('CUSTOM:')) {
+    poolAddress = selectedPool.split(':')[1];
+  } else if (currentPool) {
+    poolAddress = currentPool.address;
+  }
 
-  // Contract reads - Native balance
-  const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
+  const tokenA = currentPool?.tokenA;
+  const tokenB = currentPool?.tokenB;
+
+  // Contract reads - Native balance (we only need the refetch function)
+  const { refetch: refetchNativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address }
   });
@@ -62,16 +77,20 @@ export default function RemoveLiquidityPage() {
     functionName: 'tokenB',
   });
 
-  // Token balances
-  const { data: usdcBalance } = useReadContract({
-    address: CONTRACTS.USDC,
-    abi: USDC_ABI,
-    functionName: 'balanceOf',
-    args: [address as Address],
-    query: { enabled: !!address }
-  });
+  // Load custom pools from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('customPools');
+      if (stored) setCustomPools(JSON.parse(stored));
+    } catch {
+      console.error('Error loading custom pools');
+    }
+  }, []);
 
-  const { data: kanariBalance, refetch: refetchKanariBalance } = useReadContract({
+  const { customTokens } = useAllTokens();
+
+  // Token balances (we only need refetch functions here)
+  const { refetch: refetchKanariBalance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'balanceOf',
@@ -89,27 +108,30 @@ export default function RemoveLiquidityPage() {
 
   // Helper functions
   const getTokenKeyFromAddress = (tokenAddress: string): TokenKey => {
-    if (tokenAddress === TOKENS.USDC.address) return 'USDC';
-    if (tokenAddress === TOKENS.KANARI.address) return 'KANARI';
-    if (tokenAddress === TOKENS.NATIVE.address) return 'NATIVE';
+    const lower = tokenAddress.toLowerCase();
+    if (lower === TOKENS.USDC.address.toLowerCase()) return 'USDC';
+    if (lower === TOKENS.KANARI.address.toLowerCase()) return 'KANARI';
+    if (lower === TOKENS.NATIVE.address.toLowerCase()) return 'NATIVE';
+    // check custom tokens
+    const found = (customTokens || []).find(t => String(t.address).toLowerCase() === lower);
+    if (found) return found.address === lower ? (TOKENS.KANARI.address.toLowerCase() === lower ? 'KANARI' : 'USDC') : 'USDC';
     return 'USDC'; // fallback
   };
 
-  const getTokenBalance = (tokenKey: TokenKey) => {
-    switch (tokenKey) {
-      case 'NATIVE':
-        return nativeBalance?.value || BigInt(0);
-      case 'USDC':
-        return usdcBalance || BigInt(0);
-      case 'KANARI':
-        return kanariBalance || BigInt(0);
-      default:
-        return BigInt(0);
-    }
-  };
+  const displayTokenAKey = ((typeof selectedPool === 'string' && selectedPool.startsWith('CUSTOM:'))
+    ? (poolTokenA ? getTokenKeyFromAddress(String(poolTokenA)) : (tokenA as TokenKey) ?? 'USDC')
+    : (tokenA as TokenKey)) as TokenKey;
+
+  const displayTokenBKey = ((typeof selectedPool === 'string' && selectedPool.startsWith('CUSTOM:'))
+    ? (poolTokenB ? getTokenKeyFromAddress(String(poolTokenB)) : (tokenB as TokenKey) ?? 'USDC')
+    : (tokenB as TokenKey)) as TokenKey;
+
+  // getTokenBalance removed (unused). Use nativeBalance, usdcBalance, kanariBalance directly where needed.
 
   const getTokenDecimals = (tokenKey: TokenKey) => {
-    return TOKENS[tokenKey].decimals;
+    // Guard access to TOKENS in case an unknown key is passed
+    const key = tokenKey ?? 'USDC';
+    return TOKENS[key].decimals;
   };
 
   // Reset form when pool changes
@@ -148,7 +170,7 @@ export default function RemoveLiquidityPage() {
         refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
-      } catch (e) {
+      } catch {
         // ignore
       }
 
@@ -258,16 +280,16 @@ export default function RemoveLiquidityPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex items-center -space-x-2">
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
-                      {TOKENS[tokenA].icon}
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
+                      {TOKENS[displayTokenAKey].icon}
                     </div>
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                      {TOKENS[tokenB].icon}
+                    <div className={`w-8 h-8 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-sm font-bold`}>
+                      {TOKENS[displayTokenBKey].icon}
                     </div>
                   </div>
                   <div>
-                    <div className="font-medium">{currentPool.name}</div>
-                    <div className="text-sm text-[var(--muted-text)]">{currentPool.description}</div>
+                    <div className="font-medium">{currentPool?.name ?? (customPools.find(p=>p.poolAddress===poolAddress)?.pairName || poolAddress)}</div>
+                    <div className="text-sm text-[var(--muted-text)]">{currentPool?.description ?? ''}</div>
                   </div>
                 </div>
                 <div className="text-[var(--muted-text)]">
@@ -305,6 +327,36 @@ export default function RemoveLiquidityPage() {
                       )}
                     </button>
                   ))}
+                  {customPools.length > 0 && (
+                    <div className="border-t border-white/5">
+                      {customPools.map((p) => (
+                        <button
+                          key={p.poolAddress}
+                          onClick={() => {
+                            setSelectedPool(`CUSTOM:${p.poolAddress}`);
+                            setShowPoolSelect(false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${selectedPool === `CUSTOM:${p.poolAddress}` ? 'bg-[var(--primary-color)]/10' : ''}`}
+                        >
+                          <div className="flex items-center -space-x-2">
+                            <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                              {TOKENS[displayTokenAKey].icon}
+                            </div>
+                            <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                              {TOKENS[displayTokenBKey].icon}
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <div className="font-medium">{p.pairName}</div>
+                            <div className="text-sm text-[var(--muted-text)]">{p.poolAddress}</div>
+                          </div>
+                          {selectedPool === `CUSTOM:${p.poolAddress}` && (
+                            <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -331,12 +383,12 @@ export default function RemoveLiquidityPage() {
                   <span>{getPoolShare()}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenA].symbol} in Pool</span>
-                  <span>{(Number(formatUnits(reserves[0], getTokenDecimals(tokenA))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[tokenA].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{TOKENS[displayTokenAKey].symbol} in Pool</span>
+                  <span>{(Number(formatUnits(reserves[0], getTokenDecimals(displayTokenAKey))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[displayTokenAKey].symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenB].symbol} in Pool</span>
-                  <span>{(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[tokenB].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{TOKENS[displayTokenBKey].symbol} in Pool</span>
+                  <span>{(Number(formatUnits(reserves[1], getTokenDecimals(displayTokenBKey))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[displayTokenBKey].symbol}</span>
                 </div>
               </div>
             </div>
@@ -414,21 +466,21 @@ export default function RemoveLiquidityPage() {
               {/* Token A Amount */}
               <div className="flex items-center justify-between p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-xs font-bold`}>
-                    {TOKENS[tokenA].icon}
+                    <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                      {TOKENS[displayTokenAKey].icon}
+                    </div>
+                    <span className="font-medium">{TOKENS[displayTokenAKey].symbol}</span>
                   </div>
-                  <span className="font-medium">{TOKENS[tokenA].symbol}</span>
-                </div>
                 <span className="font-medium">{parseFloat(amountA).toFixed(6)}</span>
               </div>
 
               {/* Token B Amount */}
               <div className="flex items-center justify-between p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
-                    {TOKENS[tokenB].icon}
+                  <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                    {TOKENS[displayTokenBKey].icon}
                   </div>
-                  <span className="font-medium">{TOKENS[tokenB].symbol}</span>
+                  <span className="font-medium">{TOKENS[displayTokenBKey].symbol}</span>
                 </div>
                 <span className="font-medium">{parseFloat(amountB).toFixed(6)}</span>
               </div>
@@ -489,11 +541,11 @@ export default function RemoveLiquidityPage() {
                 <span>{slippage}%</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Min {TOKENS[tokenA].symbol} Received</span>
+                <span className="text-[var(--muted-text)]">Min {TOKENS[displayTokenAKey].symbol} Received</span>
                 <span>{(parseFloat(amountA) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Min {TOKENS[tokenB].symbol} Received</span>
+                <span className="text-[var(--muted-text)]">Min {TOKENS[displayTokenBKey].symbol} Received</span>
                 <span>{(parseFloat(amountB) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
               </div>
             </div>

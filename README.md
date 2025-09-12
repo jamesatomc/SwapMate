@@ -75,3 +75,4 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+ระบบ farm คู่ kanari/coin(เหรียญหลัก) จะได้ Reward Rate หารจำนวนผู้นวาง lp หากมีเยอะก็จะหารเยอะ ใช้เวลา 6 ปี ถึงจะจบ pool Reward max 6m kanari ปีหนึงตก ปีละ 1m kanari จนครบ 6 ปี ปรับ DeployDEX_v2.s.sol

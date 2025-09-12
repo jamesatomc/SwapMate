@@ -59,11 +59,23 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
             return rewardPerTokenStored;
         }
         uint256 timeDelta = lastTimeRewardApplicable() - lastUpdateTime;
-        return rewardPerTokenStored + (timeDelta * rewardRate * 1e18) / _totalSupply;
+        if (timeDelta == 0) {
+            return rewardPerTokenStored;
+        }
+        // rewardRate is in 1e18 precision; timeDelta * rewardRate must not overflow
+        require(rewardRate == 0 || timeDelta <= type(uint256).max / rewardRate, "Overflow in rewardPerToken");
+        // Now compute: rewardPerTokenStored + (timeDelta * rewardRate) / _totalSupply
+        return rewardPerTokenStored + (timeDelta * rewardRate) / _totalSupply;
     }
 
     function earned(address account) public view returns (uint256) {
-        return (_balances[account] * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18 + rewards[account];
+        uint256 rewardPerTokenCurrent = rewardPerToken();
+        uint256 userRewardPerToken = userRewardPerTokenPaid[account];
+        uint256 accumulated = 0;
+        if (rewardPerTokenCurrent > userRewardPerToken) {
+            accumulated = (_balances[account] * (rewardPerTokenCurrent - userRewardPerToken)) / 1e18;
+        }
+        return accumulated + rewards[account];
     }
 
     /* ========== MUTATIVE ========== */
@@ -81,6 +93,7 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
     /// @notice Stake LP tokens. Caller must approve LP token to this contract first.
     function stake(uint256 amount) external whenNotPaused nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Cannot stake 0");
+        require(amount <= type(uint256).max - _totalSupply, "Total supply overflow");
         _totalSupply += amount;
         _balances[msg.sender] += amount;
         lpToken.safeTransferFrom(msg.sender, address(this), amount);
@@ -147,13 +160,19 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
         // pull reward tokens from caller
         rewardToken.safeTransferFrom(msg.sender, address(this), rewardAmount);
 
+        // Use 1e18 precision for rewardRate to avoid truncation when rewardAmount < duration.
+        uint256 newRewardRate;
         if (block.timestamp >= periodFinish) {
-            rewardRate = rewardAmount / duration;
+            newRewardRate = (rewardAmount * 1e18) / duration;
         } else {
             uint256 remaining = periodFinish - block.timestamp;
-            uint256 leftover = remaining * rewardRate;
-            rewardRate = (rewardAmount + leftover) / duration;
+            uint256 leftover = remaining * rewardRate; // rewardRate already in 1e18 precision
+            newRewardRate = ((rewardAmount * 1e18) + leftover) / duration;
         }
+
+        // Ensure rewardRate is reasonable (non-zero when rewardAmount > 0 and avoids underflow)
+        require(newRewardRate > 0, "Reward rate too low");
+        rewardRate = newRewardRate;
 
         // safety: ensure rewardRate is non-zero when rewardAmount >= duration
         lastUpdateTime = block.timestamp;
@@ -171,14 +190,27 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
         emit TokenRecovered(token, amount);
     }
 
+    /// @notice Explicit getter for period finish (convenience for frontends)
+    function getPeriodFinish() external view returns (uint256) {
+        return periodFinish;
+    }
+
     /// @notice Explicit getter for reward rate (convenience for frontends)
     function getRewardRate() external view returns (uint256) {
         return rewardRate;
     }
 
-    /// @notice Explicit getter for period finish (convenience for frontends)
-    function getPeriodFinish() external view returns (uint256) {
-        return periodFinish;
+    /// @notice Returns total reward remaining to be distributed for the current period (scaled back to token units)
+    function getRewardForDuration() external view returns (uint256) {
+        if (block.timestamp >= periodFinish) return 0;
+        // rewardRate is scaled by 1e18; multiply by remaining seconds then divide by 1e18
+        uint256 remaining = periodFinish - lastUpdateTime;
+        return (rewardRate * remaining) / 1e18;
+    }
+
+    /// @notice Expose paused state
+    function isPaused() external view returns (bool) {
+        return paused();
     }
 
     /// @notice Pause the contract (emergency use only)

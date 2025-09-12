@@ -24,7 +24,7 @@ export default function FarmingPage() {
 
   // Read LP token balance (KANARI/Native LP)
   const { data: lpBalanceData } = useReadContract({
-    address: CONTRACTS.KANARI_USDC_POOL,
+    address: CONTRACTS.KANARI_NATIVE_POOL,
     abi: SWAP_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
@@ -87,7 +87,7 @@ export default function FarmingPage() {
     if (!stakeAmount) return;
     
     writeContract({
-      address: CONTRACTS.KANARI_USDC_POOL,
+      address: CONTRACTS.KANARI_NATIVE_POOL,
       abi: SWAP_ABI,
       functionName: 'approve',
       args: [CONTRACTS.FARMING, parseEther(stakeAmount)],
@@ -342,7 +342,6 @@ export default function FarmingPage() {
         <h3 className="text-lg font-medium text-orange-800 mb-2">💡 How to Get LP Tokens</h3>
         <ol className="list-decimal list-inside text-sm text-orange-700 space-y-1">
           <li>Go to the <strong>Add Liquidity</strong> page</li>
-          <li>Add equal value of KANARI and USDC tokens</li>
           <li>Receive LP tokens representing your share</li>
           <li>Come back here to stake your LP tokens and earn rewards!</li>
         </ol>

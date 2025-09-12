@@ -2,25 +2,126 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
-import { parseEther, formatEther, formatUnits, parseUnits, Address } from 'viem';
+import { formatUnits, parseUnits, Address } from 'viem';
 import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { useAllTokens } from './TokenManager';
 
 export default function AddLiquidityPage() {
   const { address, isConnected } = useAccount();
   
   // State for liquidity
-  const [selectedPool, setSelectedPool] = useState<PoolKey>('KANARI-USDC');
+  // allow selecting built-in pools (keys in POOLS) or custom pools saved to localStorage as 'CUSTOM:<address>'
+  const [selectedPool, setSelectedPool] = useState<string>('KANARI-NATIVE');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [isAddingLiquidity, setIsAddingLiquidity] = useState(false);
   const [showPoolSelect, setShowPoolSelect] = useState(false);
 
-  // Get current pool info
-  const currentPool = POOLS[selectedPool];
-  const poolAddress = currentPool.address;
-  const tokenA = currentPool.tokenA;
-  const tokenB = currentPool.tokenB;
+  // Load custom pools saved by CreatePairPage (persisted to localStorage)
+  type CustomPool = { poolAddress: string; tokenAKey?: string; tokenBKey?: string; tokenAAddress?: string; tokenBAddress?: string; pairName?: string };
+  const [customPools, setCustomPools] = useState<CustomPool[]>([]);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('customPools');
+      if (stored) setCustomPools(JSON.parse(stored));
+    } catch {
+      console.error('Error loading custom pools');
+    }
+  }, []);
+
+  // Helper to map token address ->TokenKey when possible
+  const getTokenKeyFromAddress = (tokenAddress?: string): TokenKey => {
+    if (!tokenAddress) return 'USDC';
+    const lower = tokenAddress.toLowerCase();
+    for (const k of Object.keys(TOKENS) as TokenKey[]) {
+      if (TOKENS[k].address.toLowerCase() === lower) return k;
+    }
+    return 'USDC';
+  };
+
+  const { customTokens } = useAllTokens();
+  // Helper to resolve a display token object (works for built-in TOKENS and custom tokens saved to localStorage)
+  const getDisplayToken = React.useCallback((keyOrAddress?: string) => {
+    // Default fallback display
+    const fallback = { address: '', name: '', symbol: keyOrAddress || 'TOKEN', decimals: 18, icon: (keyOrAddress ? String(keyOrAddress).charAt(0).toUpperCase() : '?'), color: 'bg-gray-400' };
+
+    if (!keyOrAddress) return fallback;
+
+    // If it's a built-in token key
+    try {
+      if (keyOrAddress in TOKENS) {
+        return TOKENS[keyOrAddress as TokenKey];
+      }
+    } catch {
+      // ignore
+    }
+
+    // Try to find in saved custom tokens in localStorage
+    // Check custom tokens from hook
+    try {
+      const found = (customTokens || []).find(t => String(t.address).toLowerCase() === String(keyOrAddress).toLowerCase());
+      if (found) return { address: found.address, name: found.name, symbol: found.symbol, decimals: found.decimals, icon: found.icon || String(found.symbol).charAt(0).toUpperCase(), color: found.color || 'bg-gray-400' };
+    } catch {
+      // ignore
+    }
+
+    // Try mapping address to known built-in token key
+    try {
+      const mapped = getTokenKeyFromAddress(keyOrAddress);
+      if (mapped && mapped in TOKENS) return TOKENS[mapped];
+    } catch {
+      // ignore
+    }
+
+
+    return fallback;
+  }, [customTokens]);
+
+  const getTokenDecimals = React.useCallback((tokenKey?: TokenKey | string) => {
+    try {
+      return getDisplayToken(tokenKey as string).decimals;
+    } catch {
+      return 18;
+    }
+  }, [getDisplayToken]);
+
+  // Resolve current pool info whether built-in or custom
+  const isCustomSelection = selectedPool.startsWith('CUSTOM:');
+  const poolAddress = isCustomSelection ? selectedPool.split(':')[1] : (POOLS[selectedPool as PoolKey]?.address);
+  // If custom, try to find token keys saved with the custom pool entry
+  let tokenA: TokenKey = 'USDC';
+  let tokenB: TokenKey = 'USDC';
+  let currentPoolName = '';
+  let currentPoolDescription = '';
+  if (isCustomSelection) {
+    const poolAddr = poolAddress?.toLowerCase();
+    const found = customPools.find((p) => p.poolAddress && String(p.poolAddress).toLowerCase() === poolAddr);
+    if (found) {
+      tokenA = (found.tokenAKey as TokenKey) || (found.tokenAAddress ? getTokenKeyFromAddress(found.tokenAAddress) : 'USDC');
+      tokenB = (found.tokenBKey as TokenKey) || (found.tokenBAddress ? getTokenKeyFromAddress(found.tokenBAddress) : 'USDC');
+      currentPoolName = found.pairName || `${getDisplayToken(tokenA).symbol}/${getDisplayToken(tokenB).symbol}`;
+      currentPoolDescription = 'Custom pool';
+    } else {
+      // fallback: try to read on-chain token ordering later via contract reads
+      tokenA = 'USDC';
+      tokenB = 'KANARI';
+      currentPoolName = poolAddress || 'Custom Pool';
+      currentPoolDescription = 'Custom pool';
+    }
+  } else {
+    type PoolLike = { tokenA?: string; tokenB?: string; name?: string; description?: string };
+    const built: PoolLike = POOLS[selectedPool as PoolKey] || {} as PoolLike;
+    tokenA = (built.tokenA as TokenKey) || 'USDC';
+    tokenB = (built.tokenB as TokenKey) || 'KANARI';
+    currentPoolName = built.name || `${getDisplayToken(tokenA).symbol}/${getDisplayToken(tokenB).symbol}`;
+    currentPoolDescription = built.description || '';
+  }
+  const currentPool = { address: poolAddress, tokenA, tokenB, name: currentPoolName, description: currentPoolDescription };
+
+  // Safe display objects for the currently selected tokens (used in JSX to avoid indexing TOKENS[...] directly)
+  const displayA = getDisplayToken(tokenA);
+  const displayB = getDisplayToken(tokenB);
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -83,21 +184,21 @@ export default function AddLiquidityPage() {
   // Derived helper values for native checks and UX
   const onChainAaddr = onChainTokenA ? String(onChainTokenA).toLowerCase() : null;
   const onChainBaddr = onChainTokenB ? String(onChainTokenB).toLowerCase() : null;
-  const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+  const nativeZero = getDisplayToken('NATIVE').address.toLowerCase();
   const poolRequiresNative = onChainAaddr === nativeZero || onChainBaddr === nativeZero;
 
   // Preview the native amount required (if inputs are available) so we can disable the button when balance is insufficient
   let previewNativeRequired: bigint | null = null;
   try {
     if ((onChainAaddr || onChainBaddr) && (amountA || amountB)) {
-      const decimalsA = TOKENS[tokenA].decimals;
-      const decimalsB = TOKENS[tokenB].decimals;
+  const decimalsA = getTokenDecimals(tokenA);
+  const decimalsB = getTokenDecimals(tokenB);
       const aWei = amountA ? parseUnits(amountA, decimalsA) : BigInt(0);
       const bWei = amountB ? parseUnits(amountB, decimalsB) : BigInt(0);
       if (onChainAaddr === nativeZero) previewNativeRequired = aWei;
       if (onChainBaddr === nativeZero) previewNativeRequired = (previewNativeRequired || BigInt(0)) + bWei;
     }
-  } catch (e) {
+  } catch {
     previewNativeRequired = null;
   }
 
@@ -139,7 +240,7 @@ export default function AddLiquidityPage() {
         refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -158,7 +259,7 @@ export default function AddLiquidityPage() {
         refetchNativeBalance?.();
         refetchUsdcAllowance?.();
         refetchKanariAllowance?.();
-      } catch (e) {
+      } catch {
         // ignore
       }
 
@@ -195,9 +296,7 @@ export default function AddLiquidityPage() {
     }
   };
 
-  const getTokenDecimals = (tokenKey: TokenKey) => {
-    return TOKENS[tokenKey].decimals;
-  };
+  // (replaced by a safer getTokenDecimals above which resolves custom tokens)
 
   const isNativeToken = (tokenKey: TokenKey) => {
     return tokenKey === 'NATIVE';
@@ -222,7 +321,7 @@ export default function AddLiquidityPage() {
     } catch (error) {
       console.error('Error calculating proportional amount:', error);
     }
-  }, [amountA, reserves, tokenA, tokenB]);
+  }, [amountA, reserves, tokenA, tokenB, getTokenDecimals]);
 
   const handleApprove = async (tokenKey: TokenKey) => {
     if (!address || isNativeToken(tokenKey)) return;
@@ -268,14 +367,14 @@ export default function AddLiquidityPage() {
       
       // Determine native value according to on-chain token ordering when available
       let nativeValue = BigInt(0);
-      const aAddrRaw = onChainTokenA || TOKENS[tokenA].address;
-      const bAddrRaw = onChainTokenB || TOKENS[tokenB].address;
+  const aAddrRaw = onChainTokenA || getDisplayToken(tokenA).address;
+  const bAddrRaw = onChainTokenB || getDisplayToken(tokenB).address;
       if (!onChainTokenA || !onChainTokenB) {
         console.warn('onChain token addresses not available yet; falling back to local POOLS mapping. This may cause Incorrect native value errors.');
       }
       const aAddr = String(aAddrRaw).toLowerCase();
       const bAddr = String(bAddrRaw).toLowerCase();
-      const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+  const nativeZero = getDisplayToken('NATIVE').address.toLowerCase();
       if (aAddr === nativeZero) nativeValue += amountAWei;
       if (bAddr === nativeZero) nativeValue += amountBWei;
 
@@ -323,6 +422,49 @@ export default function AddLiquidityPage() {
     return balance ? formatUnits(balance, decimals) : '0';
   };
 
+  // Fill amount fields based on percent of user's balance for token A or B
+  const handlePercentFill = (percent: number, which: 'A' | 'B') => {
+    try {
+      if (percent <= 0 || percent > 100) return;
+
+      if (which === 'A') {
+        const bal = getTokenBalance(tokenA);
+        const decimalsA = getTokenDecimals(tokenA);
+        // use floor to avoid precision issues when formatting
+        const use = bal === BigInt(0) ? BigInt(0) : (bal * BigInt(percent)) / BigInt(100);
+        const amountStr = formatUnits(use, decimalsA);
+        setAmountA(amountStr);
+
+        // If reserves available, compute proportional B amount; otherwise leave B empty
+        if (reserves) {
+          const [reserveA, reserveB] = reserves as [bigint, bigint];
+          if (reserveA !== BigInt(0)) {
+            const proportionalB = (use * reserveB) / reserveA;
+            const decimalsB = getTokenDecimals(tokenB);
+            setAmountB(formatUnits(proportionalB, decimalsB));
+          }
+        }
+      } else {
+        const bal = getTokenBalance(tokenB);
+        const decimalsB = getTokenDecimals(tokenB);
+        const use = bal === BigInt(0) ? BigInt(0) : (bal * BigInt(percent)) / BigInt(100);
+        const amountStr = formatUnits(use, decimalsB);
+        setAmountB(amountStr);
+
+        if (reserves) {
+          const [reserveA, reserveB] = reserves as [bigint, bigint];
+          if (reserveB !== BigInt(0)) {
+            const proportionalA = (use * reserveA) / reserveB;
+            const decimalsA = getTokenDecimals(tokenA);
+            setAmountA(formatUnits(proportionalA, decimalsA));
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Percent fill failed', err);
+    }
+  };
+
   const getPoolShare = () => {
     if (!amountA || !totalSupply || !reserves) return '0';
     
@@ -360,47 +502,7 @@ export default function AddLiquidityPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showPoolSelect]);
 
-  // Token selector component
-  const TokenSelector = ({ 
-    isOpen, 
-    onClose, 
-    onSelect, 
-    selectedToken, 
-    otherToken, 
-    isTokenA 
-  }: { 
-    isOpen: boolean; 
-    onClose: () => void; 
-    onSelect: (token: TokenKey) => void; 
-    selectedToken: TokenKey; 
-    otherToken: TokenKey; 
-    isTokenA: boolean;
-  }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--surface)] border border-white/10 rounded-xl shadow-xl z-50">
-        {Object.entries(TOKENS).map(([key, token]) => (
-          <button
-            key={key}
-            onClick={() => onSelect(key as TokenKey)}
-            className="w-full flex items-center gap-3 p-3 hover:bg-[var(--background)]/50 transition-colors first:rounded-t-xl last:rounded-b-xl"
-          >
-            <div className={`w-8 h-8 rounded-full ${token.color} flex items-center justify-center text-white text-sm font-bold`}>
-              {token.icon}
-            </div>
-            <div className="flex-1 text-left">
-              <div className="font-medium">{token.symbol}</div>
-              <div className="text-sm text-[var(--muted-text)]">{token.name}</div>
-            </div>
-            <div className="text-sm text-[var(--muted-text)]">
-              {parseFloat(getBalance(key as TokenKey)).toFixed(4)}
-            </div>
-          </button>
-        ))}
-      </div>
-    );
-  };
+  // (inline TokenSelector removed - unused)
 
   return (
     <div className="max-w-md mx-auto">
@@ -416,11 +518,11 @@ export default function AddLiquidityPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex items-center -space-x-2">
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
-                      {TOKENS[tokenA].icon}
+                    <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold z-10`}>
+                      {displayA.icon}
                     </div>
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                      {TOKENS[tokenB].icon}
+                    <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
+                      {displayB.icon}
                     </div>
                   </div>
                   <div>
@@ -447,11 +549,11 @@ export default function AddLiquidityPage() {
                       }`}
                     >
                       <div className="flex items-center -space-x-2">
-                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenA].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
-                          {TOKENS[pool.tokenA].icon}
+                        <div className={`w-6 h-6 rounded-full ${getDisplayToken(pool.tokenA).color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                          {getDisplayToken(pool.tokenA).icon}
                         </div>
-                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
-                          {TOKENS[pool.tokenB].icon}
+                        <div className={`w-6 h-6 rounded-full ${getDisplayToken(pool.tokenB).color} flex items-center justify-center text-white text-xs font-bold`}>
+                          {getDisplayToken(pool.tokenB).icon}
                         </div>
                       </div>
                       <div className="text-left">
@@ -463,6 +565,48 @@ export default function AddLiquidityPage() {
                       )}
                     </button>
                   ))}
+
+                  {/* Custom pools saved in localStorage (created via CreatePairPage) */}
+                  {customPools && customPools.length > 0 && (
+                    <div className="border-t border-white/5">
+                      {customPools.map((p) => {
+                        const addr = String(p.poolAddress || p.poolAddress).toLowerCase();
+                        const key = `CUSTOM:${addr}`;
+                        // resolve display tokens (may be built-in key or custom token address)
+                        const aDisplay = getDisplayToken(p.tokenAKey || p.tokenAAddress);
+                        const bDisplay = getDisplayToken(p.tokenBKey || p.tokenBAddress);
+                        const name = p.pairName || `${aDisplay.symbol}/${bDisplay.symbol}`;
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setSelectedPool(key);
+                              setShowPoolSelect(false);
+                            }}
+                            className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
+                              selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
+                            }`}
+                          >
+                            <div className="flex items-center -space-x-2">
+                              <div className={`w-6 h-6 rounded-full ${aDisplay.color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                                {aDisplay.icon}
+                              </div>
+                              <div className={`w-6 h-6 rounded-full ${bDisplay.color} flex items-center justify-center text-white text-xs font-bold`}>
+                                {bDisplay.icon}
+                              </div>
+                            </div>
+                            <div className="text-left">
+                              <div className="font-medium">{name}</div>
+                              <div className="text-sm text-[var(--muted-text)]">Custom pool: {p.poolAddress}</div>
+                            </div>
+                            {selectedPool === key && (
+                              <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -482,12 +626,12 @@ export default function AddLiquidityPage() {
               <h3 className="text-lg font-semibold mb-3">Pool Information</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenA].symbol} Reserve</span>
-                  <span>{formatUnits(reserves[0], getTokenDecimals(tokenA))} {TOKENS[tokenA].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{displayA.symbol} Reserve</span>
+                  <span>{formatUnits(reserves[0], getTokenDecimals(tokenA))} {displayA.symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenB].symbol} Reserve</span>
-                  <span>{formatUnits(reserves[1], getTokenDecimals(tokenB))} {TOKENS[tokenB].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{displayB.symbol} Reserve</span>
+                  <span>{formatUnits(reserves[1], getTokenDecimals(tokenB))} {displayB.symbol}</span>
                 </div>
                 {lpBalance && (
                   <div className="flex justify-between">
@@ -502,17 +646,29 @@ export default function AddLiquidityPage() {
           {/* Token A Input */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-[var(--muted-text)]">{TOKENS[tokenA].symbol} Amount</label>
-              <span className="text-sm text-[var(--muted-text)]">
-                Balance: {parseFloat(getBalance(tokenA)).toFixed(4)} {TOKENS[tokenA].symbol}
-              </span>
+              <label className="text-sm font-medium text-[var(--muted-text)]">{displayA.symbol} Amount</label>
+              <div className="text-sm text-[var(--muted-text)] flex items-center gap-2">
+                <span>Balance: {parseFloat(getBalance(tokenA)).toFixed(4)} {displayA.symbol}</span>
+                <button
+                  onClick={() => handlePercentFill(100, 'A')}
+                  className="px-2 py-0.5 bg-[var(--background)]/50 rounded-md text-xs hover:bg-[var(--background)]/80"
+                >
+                  Max
+                </button>
+                <button
+                  onClick={() => handlePercentFill(50, 'A')}
+                  className="px-2 py-0.5 bg-[var(--background)]/50 rounded-md text-xs hover:bg-[var(--background)]/80"
+                >
+                  50%
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
               <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold`}>
-                  {TOKENS[tokenA].icon}
+                <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold`}>
+                  {displayA.icon}
                 </div>
-                  <span className="font-medium">{TOKENS[tokenA].symbol}</span>
+                  <span className="font-medium">{displayA.symbol}</span>
                 </div>
                 <input
                   type="text"
@@ -536,17 +692,29 @@ export default function AddLiquidityPage() {
           {/* Token B Input */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-[var(--muted-text)]">{TOKENS[tokenB].symbol} Amount</label>
-              <span className="text-sm text-[var(--muted-text)]">
-                Balance: {parseFloat(getBalance(tokenB)).toFixed(4)} {TOKENS[tokenB].symbol}
-              </span>
+              <label className="text-sm font-medium text-[var(--muted-text)]">{displayB.symbol} Amount</label>
+              <div className="text-sm text-[var(--muted-text)] flex items-center gap-2">
+                <span>Balance: {parseFloat(getBalance(tokenB)).toFixed(4)} {displayB.symbol}</span>
+                <button
+                  onClick={() => handlePercentFill(100, 'B')}
+                  className="px-2 py-0.5 bg-[var(--background)]/50 rounded-md text-xs hover:bg-[var(--background)]/80"
+                >
+                  Max
+                </button>
+                <button
+                  onClick={() => handlePercentFill(50, 'B')}
+                  className="px-2 py-0.5 bg-[var(--background)]/50 rounded-md text-xs hover:bg-[var(--background)]/80"
+                >
+                  50%
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
               <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                  {TOKENS[tokenB].icon}
+                <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
+                  {displayB.icon}
                 </div>
-                <span className="font-medium">{TOKENS[tokenB].symbol}</span>
+                <span className="font-medium">{displayB.symbol}</span>
                 </div>
                 <input
                   type="text"
@@ -597,9 +765,9 @@ export default function AddLiquidityPage() {
                 <button
                   onClick={() => handleApprove(tokenA)}
                   disabled={isApproving}
-                  className={`w-full py-3 ${TOKENS[tokenA].color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
+                  className={`w-full py-3 ${displayA.color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
                 >
-                  {isApproving ? 'Approving...' : `Approve ${TOKENS[tokenA].symbol}`}
+                  {isApproving ? 'Approving...' : `Approve ${displayA.symbol}`}
                 </button>
               )}
               
@@ -607,9 +775,9 @@ export default function AddLiquidityPage() {
                 <button
                   onClick={() => handleApprove(tokenB)}
                   disabled={isApproving}
-                  className={`w-full py-3 ${TOKENS[tokenB].color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
+                  className={`w-full py-3 ${displayB.color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
                 >
-                  {isApproving ? 'Approving...' : `Approve ${TOKENS[tokenB].symbol}`}
+                  {isApproving ? 'Approving...' : `Approve ${displayB.symbol}`}
                 </button>
               )}
 
@@ -648,7 +816,7 @@ export default function AddLiquidityPage() {
               {reserves && (
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--muted-text)]">Exchange Rate</span>
-                  <span>1 {TOKENS[tokenA].symbol} = {(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) / Number(formatUnits(reserves[0], getTokenDecimals(tokenA)))).toFixed(6)} {TOKENS[tokenB].symbol}</span>
+                  <span>1 {displayA.symbol} = {(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) / Number(formatUnits(reserves[0], getTokenDecimals(tokenA)))).toFixed(6)} {displayB.symbol}</span>
                 </div>
               )}
             </div>

@@ -49,31 +49,27 @@ contract Kanari is ERC20, Ownable {
         return _decimals;
     }
 
-    /// @notice Override transfer to include burn mechanism
-    function transfer(address to, uint256 amount) public override returns (bool) {
-        address owner = _msgSender();
-        uint256 burnAmount = _calculateBurn(owner, amount);
+    /// @notice Override `_update` to include burn mechanism for all transfer/mint/burn entry points
+    /// OpenZeppelin's `_transfer` is not virtual in this version, but `_update` is. Override `_update`
+    /// to apply burn consistently and safely (handles allowance and balance checks in the parent).
+    function _update(address from, address to, uint256 value) internal override {
+        // Apply burn only for regular transfers (not for minting or burning)
+        if (from != address(0) && to != address(0)) {
+            uint256 burnAmount = _calculateBurn(from, value);
+            if (burnAmount > 0) {
+                // Burn portion first (sends to zero address via parent's _update)
+                super._update(from, address(0), burnAmount);
+                totalBurned += burnAmount;
+                emit TokensBurned(burnAmount);
 
-        if (burnAmount > 0) {
-            _burn(owner, burnAmount);
-            totalBurned += burnAmount;
-            emit TokensBurned(burnAmount);
+                // Transfer the remainder to recipient
+                super._update(from, to, value - burnAmount);
+                return;
+            }
         }
 
-        return super.transfer(to, amount - burnAmount);
-    }
-
-    /// @notice Override transferFrom to include burn mechanism
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
-        uint256 burnAmount = _calculateBurn(from, amount);
-
-        if (burnAmount > 0) {
-            _burn(from, burnAmount);
-            totalBurned += burnAmount;
-            emit TokensBurned(burnAmount);
-        }
-
-        return super.transferFrom(from, to, amount - burnAmount);
+        // Fallback to default behavior (covers mint, burn, and transfers without burn)
+        super._update(from, to, value);
     }
 
     /// @notice Calculate burn amount for transfer
@@ -130,6 +126,6 @@ contract Kanari is ERC20, Ownable {
 
     /// @notice Get circulating supply (total - burned)
     function circulatingSupply() external view returns (uint256) {
-        return totalSupply();
+    return totalSupply() - totalBurned;
     }
 }

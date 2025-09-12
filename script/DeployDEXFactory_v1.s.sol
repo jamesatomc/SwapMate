@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import "../lib/forge-std/src/Script.sol";
 import "src/DEXFactory.sol";
 
-contract DeployDEXFactory is Script {
+contract DeployDEXFactory_v1 is Script {
     // Configuration
     address public constant FEE_RECIPIENT = 0xC88C539aa6f67daeDaeA7aff75FE1F8848d6CeC2; // Your address
     address public constant KANARI_TOKEN = 0x37321CDCa90a1A3251c0c1B7efe59E9373377ce2;

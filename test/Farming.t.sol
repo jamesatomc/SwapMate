@@ -264,7 +264,8 @@ contract FarmingTest is Test {
 
         farming.fundRewards(REWARD_AMOUNT, REWARD_DURATION);
 
-        assertEq(farming.rewardRate(), REWARD_AMOUNT / REWARD_DURATION);
+    // Farming.rewardRate uses 1e18 precision internally: rewardRate = (rewardAmount * 1e18) / duration
+    assertEq(farming.rewardRate(), (REWARD_AMOUNT * 1e18) / REWARD_DURATION);
         assertEq(farming.periodFinish(), block.timestamp + REWARD_DURATION);
         assertEq(farming.lastUpdateTime(), block.timestamp);
     }
@@ -469,7 +470,8 @@ contract FarmingTest is Test {
     function testGetters() public {
         farming.fundRewards(REWARD_AMOUNT, REWARD_DURATION);
 
-        assertEq(farming.getRewardRate(), REWARD_AMOUNT / REWARD_DURATION);
+    // getRewardRate() returns the internal 1e18-scaled rewardRate
+    assertEq(farming.getRewardRate(), (REWARD_AMOUNT * 1e18) / REWARD_DURATION);
         assertEq(farming.getPeriodFinish(), block.timestamp + REWARD_DURATION);
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import "../src/AddLiquidity.sol";
+import "../src/ConstantProductAMM.sol";
 
 contract MockERC20 {
     string public name = "Mock";

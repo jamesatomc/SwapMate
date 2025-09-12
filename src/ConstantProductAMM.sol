@@ -103,7 +103,7 @@ contract ConstantProductAMM is ReentrancyGuard {
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
     event FeesCollected(address indexed recipient, uint256 amount, address token);
 
-    constructor(address _tokenA, address _tokenB) {
+    constructor(address _tokenA, address _tokenB) payable {
         // allow one of the tokens to be the native coin (address(0)), but not both
         require(!(_tokenA == address(0) && _tokenB == address(0)), "Both tokens cannot be native");
         tokenA = _tokenA;
@@ -249,6 +249,7 @@ contract ConstantProductAMM is ReentrancyGuard {
         // Calculate fee amount for dev wallet
         uint256 feeAmount = (amountIn * devFeeBps) / BPS;
         uint256 amountInAfterDevFee = amountIn - feeAmount;
+        require(amountInAfterDevFee > 0, "Amount too small after dev fee");
 
         // handle input transfer / native handling and adjust reserves
         if (_isNative(tokenIn)) {
@@ -295,6 +296,7 @@ contract ConstantProductAMM is ReentrancyGuard {
         view
         returns (uint256)
     {
+        require(reserveIn > 0 && reserveOut > 0, "Reserves must be > 0");
         // Note: amountIn here should already have dev fee deducted
         // Apply trading fee (different from dev fee)
         uint256 amountInWithFee = amountIn * (BPS - feeBps);
@@ -307,19 +309,19 @@ contract ConstantProductAMM is ReentrancyGuard {
         return numerator / denominator;
     }
 
-    /// @notice View helper to estimate output amount for a given input and token
-    function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256 amountOut) {
+    // Internal helper: compute amountOut assuming dev fee has already been removed from amountIn
+    function _getAmountOutInternal(uint256 amountInAfterDevFee, address tokenIn) internal view returns (uint256 amountOut) {
         require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
-        require(amountIn > 0, "AmountIn must be > 0");
+        require(amountInAfterDevFee > 0, "AmountIn must be > 0");
 
         bool isA = tokenIn == tokenA;
         (uint256 reserveA, uint256 reserveB) = getReserves();
         uint256 reserveIn = isA ? reserveA : reserveB;
         uint256 reserveOut = isA ? reserveB : reserveA;
 
-        // First deduct dev fee, then apply trading fee
-        uint256 devFee = (amountIn * devFeeBps) / BPS;
-        uint256 amountInAfterDevFee = amountIn - devFee;
+        require(reserveIn > 0 && reserveOut > 0, "Reserves must be > 0");
+
+        // Apply trading fee (dev fee already deducted before calling this)
         uint256 amountInWithFee = amountInAfterDevFee * (BPS - feeBps);
 
         // Check for overflow in numerator calculation
@@ -330,14 +332,29 @@ contract ConstantProductAMM is ReentrancyGuard {
         amountOut = numerator / denominator;
     }
 
+    /// @notice View helper to estimate output amount for a given input and token
+    function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256 amountOut) {
+        require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
+        require(amountIn > 0, "AmountIn must be > 0");
+
+        // Calculate dev fee here for estimation purposes only (do not double-deduct)
+        uint256 devFee = (amountIn * devFeeBps) / BPS;
+        uint256 amountInAfterDevFee = amountIn - devFee;
+
+        amountOut = _getAmountOutInternal(amountInAfterDevFee, tokenIn);
+    }
+
     /// @notice View helper to estimate price impact in basis points for a given trade
     function getPriceImpact(uint256 amountIn, address tokenIn) external view returns (uint256 impactBps) {
         require(amountIn > 0, "AmountIn must be > 0");
-        uint256 amountOut = this.getAmountOut(amountIn, tokenIn);
 
-        // Calculate expected output without any fees (perfect 1:1 ratio)
+        // Compute dev fee once and use internal estimator to avoid external call / double deduction
         uint256 devFee = (amountIn * devFeeBps) / BPS;
         uint256 amountInAfterDevFee = amountIn - devFee;
+
+        uint256 amountOut = _getAmountOutInternal(amountInAfterDevFee, tokenIn);
+
+        // Calculate expected output without pool price impact (only trading fee applied)
         require(amountInAfterDevFee <= type(uint256).max / (BPS - feeBps), "AmountIn too large for impact calculation");
         uint256 expectedOut = (amountInAfterDevFee * (BPS - feeBps)) / BPS;
 

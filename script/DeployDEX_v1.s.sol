@@ -2,13 +2,13 @@
 pragma solidity ^0.8.30;
 
 import "../lib/forge-std/src/Script.sol";
-import "src/AddLiquidity.sol";
+import "src/ConstantProductAMM.sol";
 import "src/DEXFactory.sol";
 import "src/Farming.sol";
 import "src/Kanari.sol";
 import "src/USDC.sol";
 
-contract DeployDEX is Script {
+contract DeployDEX_v1 is Script {
     // Deployment addresses - will be set after deployment
     address public kanariToken;
     address public usdcToken;
