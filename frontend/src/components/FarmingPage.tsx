@@ -17,12 +17,12 @@ export default function FarmingPage() {
 
   const { data: lpToken } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'lpToken' as const });
   const { data: rewardToken } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'rewardToken' as const });
-  const { data: totalStaked } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'totalStaked' as const });
+  const { data: totalStaked, refetch: refetchTotalStaked } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'totalStaked' as const });
   const { data: rewardRate } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'rewardRate' as const });
   const { data: periodFinish } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'periodFinish' as const });
   const { data: paused } = useReadContract({ address: farmingAddress, abi: FARMING_ABI, functionName: 'paused' as const });
 
-  const { data: myBalance } = useReadContract({
+  const { data: myBalance, refetch: refetchMyBalance } = useReadContract({
     address: farmingAddress,
     abi: FARMING_ABI,
     functionName: 'balanceOf' as const,
@@ -30,7 +30,7 @@ export default function FarmingPage() {
     query: { enabled: !!address }
   });
 
-  const { data: myEarned } = useReadContract({
+  const { data: myEarned, refetch: refetchMyEarned } = useReadContract({
     address: farmingAddress,
     abi: FARMING_ABI,
     functionName: 'earned' as const,
@@ -41,11 +41,13 @@ export default function FarmingPage() {
   // Write contracts (project pattern: destructure writeContract and data hash)
   const { writeContract: writeStake, data: stakeHash } = useWriteContract();
   const { writeContract: writeWithdraw, data: withdrawHash } = useWriteContract();
-  const { writeContract: writeClaim } = useWriteContract();
-  const { writeContract: writeExit } = useWriteContract();
+  const { writeContract: writeClaim, data: claimHash } = useWriteContract();
+  const { writeContract: writeExit, data: exitHash } = useWriteContract();
 
   const { isLoading: isStakePending } = useWaitForTransactionReceipt({ hash: stakeHash });
   const { isLoading: isWithdrawPending } = useWaitForTransactionReceipt({ hash: withdrawHash });
+  const { isLoading: isClaimPending } = useWaitForTransactionReceipt({ hash: claimHash });
+  const { isLoading: isExitPending } = useWaitForTransactionReceipt({ hash: exitHash });
 
   // Helpers
   const format = (val: unknown) => {
@@ -78,7 +80,7 @@ export default function FarmingPage() {
     if (!stakeAmount) return;
     try {
       const parsed = parseUnits(stakeAmount, 18);
-      writeStake({
+      await writeStake({
         address: farmingAddress,
         abi: FARMING_ABI,
         functionName: 'stake',
@@ -94,7 +96,7 @@ export default function FarmingPage() {
     if (!withdrawAmount) return;
     try {
       const parsed = parseUnits(withdrawAmount, 18);
-      writeWithdraw({
+      await writeWithdraw({
         address: farmingAddress,
         abi: FARMING_ABI,
         functionName: 'withdraw',
@@ -108,7 +110,7 @@ export default function FarmingPage() {
 
   const doClaim = async () => {
     try {
-      writeClaim({
+      await writeClaim({
         address: farmingAddress,
         abi: FARMING_ABI,
         functionName: 'claim',
@@ -120,7 +122,7 @@ export default function FarmingPage() {
 
   const doExit = async () => {
     try {
-      writeExit({
+      await writeExit({
         address: farmingAddress,
         abi: FARMING_ABI,
         functionName: 'exit',
@@ -130,87 +132,153 @@ export default function FarmingPage() {
     }
   };
 
+  // Refresh read data after transactions complete
+  React.useEffect(() => {
+    if (stakeHash && !isStakePending) {
+      try {
+        refetchMyBalance?.();
+        refetchMyEarned?.();
+        refetchTotalStaked?.();
+      } catch {}
+    }
+  }, [stakeHash, isStakePending, refetchMyBalance, refetchMyEarned, refetchTotalStaked]);
+
+  React.useEffect(() => {
+    if (withdrawHash && !isWithdrawPending) {
+      try {
+        refetchMyBalance?.();
+        refetchMyEarned?.();
+        refetchTotalStaked?.();
+      } catch {}
+    }
+  }, [withdrawHash, isWithdrawPending, refetchMyBalance, refetchMyEarned, refetchTotalStaked]);
+
+  React.useEffect(() => {
+    if (claimHash && !isClaimPending) {
+      try {
+        refetchMyEarned?.();
+      } catch {}
+    }
+  }, [claimHash, isClaimPending, refetchMyEarned]);
+
+  React.useEffect(() => {
+    if (exitHash && !isExitPending) {
+      try {
+        refetchMyBalance?.();
+        refetchMyEarned?.();
+        refetchTotalStaked?.();
+      } catch {}
+    }
+  }, [exitHash, isExitPending, refetchMyBalance, refetchMyEarned, refetchTotalStaked]);
+
   return (
-    <div className="max-w-md mx-auto">
-      <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-[var(--text-color)]">Farming</h2>
-          <div className="text-sm text-[var(--muted-text)]">Pool: {lpTokenKey || '-'}</div>
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      <header className="mb-6 text-center">
+        <h1 className="text-3xl font-bold text-gray-800">LP Farming</h1>
+        <p className="text-sm text-gray-600 mt-1">Stake your KANARI/USDC LP tokens to earn KANARI rewards</p>
+      </header>
+
+      {/* Top stats: 4 cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div className="text-xs text-gray-500">Total Staked</div>
+          <div className="text-xl font-semibold text-gray-800 mt-2">{totalStaked ? format(totalStaked) : '0.0000'} LP</div>
         </div>
 
-        <div className="mt-4 space-y-4">
-          <div className="p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
-            <h3 className="text-sm font-medium text-[var(--text-color)] mb-2">Pool</h3>
-            <div className="space-y-1 text-sm text-[var(--muted-text)]">
-              <div>LP Token: <span className="text-[var(--text-color)]">{lpToken ? String(lpToken) : '-' } {lpTokenKey ? `(${lpTokenKey})` : ''}</span></div>
-              <div>Reward Token: <span className="text-[var(--text-color)]">{rewardToken ? String(rewardToken) : '-'} {rewardTokenKey ? `(${rewardTokenKey})` : ''}</span></div>
-              <div>Total Staked: <span className="text-[var(--text-color)]">{totalStaked ? format(totalStaked) : '-'}</span></div>
-              <div>Reward Rate: <span className="text-[var(--text-color)]">{rewardRate ? format(rewardRate) : '-'}</span></div>
-              <div>Period Finish: <span className="text-[var(--text-color)]">{periodFinish ? new Date(Number(periodFinish) * 1000).toLocaleString() : '-'}</span></div>
-              <div>Paused: <span className="text-[var(--text-color)]">{paused ? String(paused) : 'false'}</span></div>
+        <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div className="text-xs text-gray-500">Reward Rate</div>
+          <div className="text-xl font-semibold text-gray-800 mt-2">{rewardRate ? format(rewardRate) : '0.000000'} KANARI/sec</div>
+        </div>
+
+        <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div className="text-xs text-gray-500">Est. APR</div>
+          <div className="text-xl font-semibold text-gray-800 mt-2">0.00%</div>
+        </div>
+
+        <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div className="text-xs text-gray-500">Time Remaining</div>
+          <div className="text-xl font-semibold text-gray-800 mt-2">{periodFinish ? `${Math.max(0, Math.floor((Number(periodFinish) - Date.now()/1000)/86400))}d 0h` : '0d 0h'}</div>
+        </div>
+      </div>
+
+      {/* Main content two-column */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Stake card */}
+        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">Stake LP Tokens</h2>
+          <p className="text-sm text-gray-600 mb-4">Amount to Stake</p>
+
+          <input
+            className="w-full p-3 border border-gray-200 rounded-lg text-gray-800 mb-3"
+            value={stakeAmount}
+            onChange={e => setStakeAmount(e.target.value)}
+            placeholder="0.0"
+          />
+
+          <div className="text-sm text-gray-600 mb-4">Available: {myBalance ? format(myBalance) : '0.000000'} LP</div>
+
+          <button className="w-full py-3 mb-3 bg-gray-100 text-gray-700 font-medium rounded-lg border border-gray-200" disabled>
+            1. Approve LP Tokens
+          </button>
+
+          <button
+            className="w-full py-3 bg-gray-700 text-white font-medium rounded-lg"
+            onClick={doStake}
+            disabled={!isConnected || isStakePending}
+          >
+            {isStakePending ? 'Staking...' : '2. Stake LP Tokens'}
+          </button>
+        </div>
+
+        {/* Right: Manage Staking */}
+        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-800 mb-2">Manage Staking</h2>
+
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 mb-4">
+            <div className="text-xs text-gray-500">Your Position</div>
+            <div className="flex items-baseline justify-between mt-2">
+              <div>
+                <div className="text-sm text-gray-600">Staked:</div>
+                <div className="text-lg font-semibold text-gray-800">{myBalance ? format(myBalance) : '0.000000'} LP</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Earned:</div>
+                <div className="text-lg font-semibold text-gray-800">{myEarned ? format(myEarned) : '0.000000'} KANARI</div>
+              </div>
             </div>
           </div>
 
-          <div className="p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
-            <h3 className="text-sm font-medium text-[var(--text-color)] mb-2">Your Position</h3>
-            <div className="text-sm text-[var(--muted-text)] space-y-1">
-              <div>Staked: <span className="text-[var(--text-color)]">{myBalance ? format(myBalance) : '-'}</span></div>
-              <div>Earned: <span className="text-[var(--text-color)]">{myEarned ? format(myEarned) : '-'}</span></div>
-            </div>
+          <p className="text-sm text-gray-600 mb-2">Amount to Withdraw</p>
+          <input
+            className="w-full p-3 border border-gray-200 rounded-lg text-gray-800 mb-3"
+            value={withdrawAmount}
+            onChange={e => setWithdrawAmount(e.target.value)}
+            placeholder="0.0"
+          />
 
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="block text-sm text-[var(--muted-text)] mb-1">Stake amount</label>
-                <input
-                  className="w-full p-3 bg-[var(--background)]/30 rounded-lg border border-white/5 text-[var(--text-color)]"
-                  value={stakeAmount}
-                  onChange={e => setStakeAmount(e.target.value)}
-                  placeholder="0.0"
-                />
-                <button
-                  className="mt-3 w-full py-3 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/80 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  onClick={doStake}
-                  disabled={!isConnected || isStakePending}
-                >
-                  {isStakePending ? 'Staking...' : 'Stake'}
-                </button>
-              </div>
+          <button
+            className="w-full py-3 mb-3 bg-gray-300 text-gray-700 font-medium rounded-lg"
+            onClick={doWithdraw}
+            disabled={!isConnected || isWithdrawPending}
+          >
+            {isWithdrawPending ? 'Withdrawing...' : 'Withdraw LP Tokens'}
+          </button>
 
-              <div>
-                <label className="block text-sm text-[var(--muted-text)] mb-1">Withdraw amount</label>
-                <input
-                  className="w-full p-3 bg-[var(--background)]/30 rounded-lg border border-white/5 text-[var(--text-color)]"
-                  value={withdrawAmount}
-                  onChange={e => setWithdrawAmount(e.target.value)}
-                  placeholder="0.0"
-                />
-                <button
-                  className="mt-3 w-full py-3 bg-[var(--surface)]/40 text-[var(--text-color)] font-medium rounded-xl hover:bg-[var(--surface)]/60 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  onClick={doWithdraw}
-                  disabled={!isConnected || isWithdrawPending}
-                >
-                  {isWithdrawPending ? 'Withdrawing...' : 'Withdraw'}
-                </button>
-              </div>
+          <button
+            className="w-full py-3 mb-3 bg-green-500 text-white font-medium rounded-lg"
+            onClick={doClaim}
+            disabled={!isConnected || isClaimPending}
+          >
+            {isClaimPending ? 'Claiming...' : 'Claim Rewards'}
+          </button>
 
-              <div className="flex gap-3">
-                <button
-                  className="flex-1 py-3 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/80 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  onClick={doClaim}
-                  disabled={!isConnected}
-                >
-                  Claim
-                </button>
-                <button
-                  className="flex-1 py-3 bg-red-600 text-white font-medium rounded-xl hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  onClick={doExit}
-                  disabled={!isConnected}
-                >
-                  Exit
-                </button>
-              </div>
-            </div>
-          </div>
+          <button
+            className="w-full py-3 bg-red-500 text-white font-medium rounded-lg"
+            onClick={doExit}
+            disabled={!isConnected || isExitPending}
+          >
+            {isExitPending ? 'Exiting...' : 'Exit (Withdraw All + Claim)'}
+          </button>
         </div>
       </div>
     </div>
