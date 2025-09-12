@@ -32,22 +32,6 @@ export default function TokenSelector({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { customTokens } = useAllTokens();
-  const [localCustomTokens, setLocalCustomTokens] = useState<CustomToken[]>(customTokens || []);
-
-  // Ensure dropdown shows newly added tokens immediately by re-reading localStorage when opened
-  useEffect(() => {
-    if (!isOpen) return;
-    try {
-      const stored = localStorage.getItem('customTokens');
-      if (stored) {
-        setLocalCustomTokens(JSON.parse(stored));
-      } else {
-        setLocalCustomTokens([]);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [isOpen]);
 
   // Combine built-in tokens with custom tokens
   const allTokens: Record<string, ExtendedToken> = {
@@ -65,7 +49,7 @@ export default function TokenSelector({
       ])
     ),
     ...Object.fromEntries(
-      (localCustomTokens.length ? localCustomTokens : customTokens).map(token => [
+      (customTokens || []).map(token => [
         token.address, // Use address as key for custom tokens
         {
           address: token.address,
@@ -80,8 +64,9 @@ export default function TokenSelector({
   };
 
   // Filter tokens based on search and exclusions
+  const normalizedExclude = excludeTokens.map(e => String(e).toLowerCase());
   const filteredTokens = Object.entries(allTokens).filter(([key, token]) => {
-    const isExcluded = excludeTokens.includes(key);
+    const isExcluded = normalizedExclude.includes(String(key).toLowerCase()) || normalizedExclude.includes(String(token.address).toLowerCase());
     const matchesSearch = !searchQuery || 
       token.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -91,7 +76,7 @@ export default function TokenSelector({
   });
 
   // Get current selected token
-  const currentToken = selectedToken ? allTokens[selectedToken] : null;
+  const currentToken = selectedToken ? allTokens[selectedToken] || allTokens[String(selectedToken).toLowerCase()] : null;
 
   // Close dropdown when clicking outside
   useEffect(() => {

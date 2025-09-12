@@ -3,9 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseUnits, formatUnits, Address } from 'viem';
-import { CONTRACTS, SWAP_ABI, KANARI_ABI, DEX_FACTORY_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
-import TokenManager, { CustomToken } from './TokenManager';
-import TokenSelector, { ExtendedToken, getTokenInfo } from './TokenSelector';
+import { CONTRACTS, SWAP_ABI, KANARI_ABI, DEX_FACTORY_ABI, POOLS } from '@/lib/contracts';
+import TokenManager, { useAllTokens } from './TokenManager';
+import TokenSelector, { getTokenInfo } from './TokenSelector';
 
 export default function SwapPage() {
   const { address, isConnected } = useAccount();
@@ -18,18 +18,19 @@ export default function SwapPage() {
   const [slippage, setSlippage] = useState('0.5');
   const [isSwapping, setIsSwapping] = useState(false);
   const [showTokenManager, setShowTokenManager] = useState(false);
-  const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
+  const { customTokens } = useAllTokens();
   const [priceImpact, setPriceImpact] = useState('0');
 
   // Find available pools
   // Load custom pools (created via CreatePairPage) and include them when searching for a matching pool
-  const [customPools, setCustomPools] = useState<any[]>([]);
+  type CustomPool = { poolAddress: string; tokenAKey?: string; tokenBKey?: string; tokenAAddress?: string; tokenBAddress?: string; pairName?: string };
+  const [customPools, setCustomPools] = useState<CustomPool[]>([]);
   useEffect(() => {
     try {
       const stored = localStorage.getItem('customPools');
       if (stored) setCustomPools(JSON.parse(stored));
-    } catch (e) {
-      console.error('Error loading custom pools:', e);
+    } catch {
+      console.error('Error loading custom pools');
     }
   }, []);
 
@@ -54,16 +55,7 @@ export default function SwapPage() {
   const poolAddress = availablePool?.address;
 
   // Load custom tokens
-  useEffect(() => {
-    const stored = localStorage.getItem('customTokens');
-    if (stored) {
-      try {
-        setCustomTokens(JSON.parse(stored));
-      } catch (e) {
-        console.error('Error loading custom tokens:', e);
-      }
-    }
-  }, []);
+  // customTokens provided by useAllTokens
 
   // Token balances
   const { data: nativeBalance } = useBalance({
@@ -167,6 +159,49 @@ export default function SwapPage() {
     return balance ? formatUnits(balance, token.decimals) : '0';
   };
 
+  // Set the input to the token's full available balance (with optional native buffer)
+  const handleSetMax = () => {
+    const token = getTokenInfo(tokenIn, customTokens);
+    if (!token) return;
+    try {
+      let balanceWei = getTokenBalance(tokenIn);
+      // If native token, leave a small buffer for gas to avoid accidental full-balance send.
+      if (isNativeToken(tokenIn)) {
+        try {
+          const buffer = parseUnits('0.001', token.decimals);
+          if (balanceWei > buffer) balanceWei = balanceWei - buffer;
+        } catch {
+          // ignore buffer on parse error
+        }
+      }
+      setAmountIn(formatUnits(balanceWei, token.decimals));
+    } catch (e) {
+      console.error('Failed to set max amount', e);
+    }
+  };
+
+  // Set the input to half of the token's available balance
+  const handleSetHalf = () => {
+    const token = getTokenInfo(tokenIn, customTokens);
+    if (!token) return;
+    try {
+      let balanceWei = getTokenBalance(tokenIn);
+      // For native token, leave a small buffer for gas before halving
+      if (isNativeToken(tokenIn)) {
+        try {
+          const buffer = parseUnits('0.001', token.decimals);
+          if (balanceWei > buffer) balanceWei = balanceWei - buffer;
+        } catch {
+          // ignore
+        }
+      }
+      const halfWei = balanceWei / BigInt(2);
+      setAmountIn(formatUnits(halfWei, token.decimals));
+    } catch (e) {
+      console.error('Failed to set half amount', e);
+    }
+  };
+
   const needsApproval = (tokenKey: string, amount: string) => {
     if (!amount || isNativeToken(tokenKey)) return false;
     
@@ -177,7 +212,7 @@ export default function SwapPage() {
       const amountWei = parseUnits(amount, token.decimals);
       const allowance = getTokenAllowance(tokenKey);
       return allowance < amountWei;
-    } catch (e) {
+    } catch {
       return true;
     }
   };
@@ -206,13 +241,13 @@ export default function SwapPage() {
   }, [priceImpactData]);
 
   // Handlers
-  const handleTokenInSelect = (tokenKey: string, token: ExtendedToken) => {
+  const handleTokenInSelect = (tokenKey: string) => {
     setTokenIn(tokenKey);
     setAmountIn('');
     setAmountOut('');
   };
 
-  const handleTokenOutSelect = (tokenKey: string, token: ExtendedToken) => {
+  const handleTokenOutSelect = (tokenKey: string) => {
     setTokenOut(tokenKey);
     setAmountOut('');
   };
@@ -299,9 +334,7 @@ export default function SwapPage() {
       {/* Token Manager */}
       {showTokenManager && (
         <TokenManager 
-          onTokenAdded={(token) => {
-            setCustomTokens(prev => [...prev, token]);
-          }}
+            onTokenAdded={() => { /* token manager persists and broadcasts update via customTokensUpdated event */ }}
           onClose={() => setShowTokenManager(false)}
         />
       )}
@@ -320,25 +353,33 @@ export default function SwapPage() {
                 onTokenSelect={handleTokenInSelect}
                 excludeTokens={[tokenOut]}
               />
-              
-              <div className="flex items-center gap-3">
+
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-[var(--muted-text)]">Balance: {parseFloat(getBalance(tokenIn)).toFixed(4)} {getTokenInfo(tokenIn, customTokens)?.symbol}</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSetMax}
+                    className="px-2 py-0.5 bg-[var(--background)]/50 rounded-md text-xs hover:bg-[var(--background)]/80"
+                  >
+                    Max
+                  </button>
+                  <button
+                    onClick={handleSetHalf}
+                    className="px-2 py-0.5 bg-[var(--background)]/50 rounded-md text-xs hover:bg-[var(--background)]/80"
+                  >
+                    50%
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
                 <input
-                  type="number"
+                  type="text"
+                  placeholder="0.0"
                   value={amountIn}
                   onChange={(e) => setAmountIn(e.target.value)}
-                  placeholder="0.0"
-                  className="flex-1 px-4 py-3 bg-[var(--background)]/50 rounded-xl border border-white/5 focus:border-[var(--primary-color)]/50 outline-none text-[var(--text-color)] placeholder-[var(--muted-text)]"
+                  className="w-full bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
                 />
-                <button
-                  onClick={() => setAmountIn(getBalance(tokenIn))}
-                  className="px-3 py-1 text-sm text-[var(--primary-color)] hover:text-[var(--primary-color)]/80 transition"
-                >
-                  MAX
-                </button>
-              </div>
-              
-              <div className="text-sm text-[var(--muted-text)]">
-                Balance: {getBalance(tokenIn)}
               </div>
             </div>
           </div>
@@ -347,11 +388,12 @@ export default function SwapPage() {
           <div className="flex justify-center">
             <button
               onClick={handleSwapTokens}
-              className="w-8 h-8 rounded-full bg-[var(--surface)] border border-white/10 flex items-center justify-center hover:bg-[var(--background)]/80 transition"
+              className="w-10 h-10 rounded-full bg-[var(--surface)] border border-white/10 flex items-center justify-center hover:bg-[var(--background)]/80 transition"
               title="Swap tokens"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              <svg className="w-5 h-5 text-[var(--text-color)]" viewBox="0 0 24 24" fill="none">
+                <path d="M7 7l5-5v3h5v4h-2V6.414L9.414 11H7V7z" fill="currentColor" />
+                <path d="M17 17l-5 5v-3H7v-4h2v3.586L14.586 13H17v4z" fill="currentColor" />
               </svg>
             </button>
           </div>
@@ -365,19 +407,19 @@ export default function SwapPage() {
                 onTokenSelect={handleTokenOutSelect}
                 excludeTokens={[tokenIn]}
               />
-              
-              <div className="flex items-center gap-3">
+
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-[var(--muted-text)]">Balance: {parseFloat(getBalance(tokenOut)).toFixed(4)} {getTokenInfo(tokenOut, customTokens)?.symbol}</div>
+              </div>
+
+              <div className="flex items-center gap-3 p-4 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <input
-                  type="number"
+                  type="text"
+                  placeholder="0.0"
                   value={amountOut}
                   readOnly
-                  placeholder="0.0"
-                  className="flex-1 px-4 py-3 bg-[var(--background)]/30 rounded-xl border border-white/5 outline-none text-[var(--text-color)] placeholder-[var(--muted-text)]"
+                  className="w-full bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
                 />
-              </div>
-              
-              <div className="text-sm text-[var(--muted-text)]">
-                Balance: {getBalance(tokenOut)}
               </div>
             </div>
           </div>

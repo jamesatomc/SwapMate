@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
 import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { useAllTokens } from './TokenManager';
 
 type CustomPool = {
   poolAddress: string;
@@ -36,8 +37,8 @@ export default function RemoveLiquidityPage() {
   const tokenA = currentPool?.tokenA;
   const tokenB = currentPool?.tokenB;
 
-  // Contract reads - Native balance
-  const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
+  // Contract reads - Native balance (we only need the refetch function)
+  const { refetch: refetchNativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address }
   });
@@ -81,23 +82,15 @@ export default function RemoveLiquidityPage() {
     try {
       const stored = localStorage.getItem('customPools');
       if (stored) setCustomPools(JSON.parse(stored));
-    } catch (e) {
-      console.error('Error loading custom pools:', e);
+    } catch {
+      console.error('Error loading custom pools');
     }
   }, []);
 
-  // ...existing code...
+  const { customTokens } = useAllTokens();
 
-  // Token balances
-  const { data: usdcBalance } = useReadContract({
-    address: CONTRACTS.USDC,
-    abi: USDC_ABI,
-    functionName: 'balanceOf',
-    args: [address as Address],
-    query: { enabled: !!address }
-  });
-
-  const { data: kanariBalance, refetch: refetchKanariBalance } = useReadContract({
+  // Token balances (we only need refetch functions here)
+  const { refetch: refetchKanariBalance } = useReadContract({
     address: CONTRACTS.KANARI,
     abi: KANARI_ABI,
     functionName: 'balanceOf',
@@ -115,9 +108,13 @@ export default function RemoveLiquidityPage() {
 
   // Helper functions
   const getTokenKeyFromAddress = (tokenAddress: string): TokenKey => {
-    if (tokenAddress === TOKENS.USDC.address) return 'USDC';
-    if (tokenAddress === TOKENS.KANARI.address) return 'KANARI';
-    if (tokenAddress === TOKENS.NATIVE.address) return 'NATIVE';
+    const lower = tokenAddress.toLowerCase();
+    if (lower === TOKENS.USDC.address.toLowerCase()) return 'USDC';
+    if (lower === TOKENS.KANARI.address.toLowerCase()) return 'KANARI';
+    if (lower === TOKENS.NATIVE.address.toLowerCase()) return 'NATIVE';
+    // check custom tokens
+    const found = (customTokens || []).find(t => String(t.address).toLowerCase() === lower);
+    if (found) return found.address === lower ? (TOKENS.KANARI.address.toLowerCase() === lower ? 'KANARI' : 'USDC') : 'USDC';
     return 'USDC'; // fallback
   };
 
@@ -129,18 +126,7 @@ export default function RemoveLiquidityPage() {
     ? (poolTokenB ? getTokenKeyFromAddress(String(poolTokenB)) : (tokenB as TokenKey) ?? 'USDC')
     : (tokenB as TokenKey)) as TokenKey;
 
-  const getTokenBalance = (tokenKey: TokenKey) => {
-    switch (tokenKey) {
-      case 'NATIVE':
-        return nativeBalance?.value || BigInt(0);
-      case 'USDC':
-        return usdcBalance || BigInt(0);
-      case 'KANARI':
-        return kanariBalance || BigInt(0);
-      default:
-        return BigInt(0);
-    }
-  };
+  // getTokenBalance removed (unused). Use nativeBalance, usdcBalance, kanariBalance directly where needed.
 
   const getTokenDecimals = (tokenKey: TokenKey) => {
     // Guard access to TOKENS in case an unknown key is passed
@@ -184,7 +170,7 @@ export default function RemoveLiquidityPage() {
         refetchUsdcBalance?.();
         refetchKanariBalance?.();
         refetchNativeBalance?.();
-      } catch (e) {
+      } catch {
         // ignore
       }
 

@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { formatUnits, parseUnits, Address } from 'viem';
+import { parseUnits, Address } from 'viem';
 import { CONTRACTS, FARMING_ABI, TOKENS } from '@/lib/contracts';
 
 export default function FarmingPage() {
@@ -41,21 +41,16 @@ export default function FarmingPage() {
   // Write contracts (project pattern: destructure writeContract and data hash)
   const { writeContract: writeStake, data: stakeHash } = useWriteContract();
   const { writeContract: writeWithdraw, data: withdrawHash } = useWriteContract();
-  const { writeContract: writeClaim, data: claimHash } = useWriteContract();
-  const { writeContract: writeExit, data: exitHash } = useWriteContract();
+  const { writeContract: writeClaim } = useWriteContract();
+  const { writeContract: writeExit } = useWriteContract();
 
   const { isLoading: isStakePending } = useWaitForTransactionReceipt({ hash: stakeHash });
   const { isLoading: isWithdrawPending } = useWaitForTransactionReceipt({ hash: withdrawHash });
 
   // Helpers
-  const format = (val: unknown, decimals = 18) => {
-    try {
-      if (val === undefined || val === null) return '-';
-      // avoid strict typing issues with formatUnits in this build environment
-      return String(val);
-    } catch (err) {
-      return String(val);
-    }
+  const format = (val: unknown) => {
+    if (val === undefined || val === null) return '-';
+    return String(val);
   };
 
   const lpTokenKey = useMemo(() => {
@@ -90,8 +85,8 @@ export default function FarmingPage() {
         args: [parsed],
       });
       setStakeAmount('');
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // ignore
     }
   };
 
@@ -106,8 +101,8 @@ export default function FarmingPage() {
         args: [parsed],
       });
       setWithdrawAmount('');
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // ignore
     }
   };
 
@@ -118,8 +113,8 @@ export default function FarmingPage() {
         abi: FARMING_ABI,
         functionName: 'claim',
       });
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // ignore
     }
   };
 
@@ -130,8 +125,8 @@ export default function FarmingPage() {
         abi: FARMING_ABI,
         functionName: 'exit',
       });
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // ignore
     }
   };
 

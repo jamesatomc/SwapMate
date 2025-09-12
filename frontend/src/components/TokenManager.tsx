@@ -110,7 +110,7 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
     try {
       // dispatch a simple event that other hooks/components can listen to
       window.dispatchEvent(new Event('customTokensUpdated'));
-    } catch (e) {
+    } catch {
       // ignore
     }
   };

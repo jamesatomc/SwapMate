@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { Address, isAddress } from 'viem';
-import { CONTRACTS, DEX_FACTORY_ABI, SWAP_ABI, TOKENS, TokenKey } from '@/lib/contracts';
-import TokenSelector, { ExtendedToken, getTokenInfo } from './TokenSelector';
-import { CustomToken } from './TokenManager';
+import { Address } from 'viem';
+import { CONTRACTS, DEX_FACTORY_ABI } from '@/lib/contracts';
+import TokenSelector, { getTokenInfo } from './TokenSelector';
+import { useAllTokens } from './TokenManager';
 
 type CustomPool = {
   poolAddress: string;
@@ -15,25 +15,13 @@ type CustomPool = {
 };
 
 export default function CreatePairPage() {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   
   // State for creating pair
   const [tokenA, setTokenA] = useState<string>('');
   const [tokenB, setTokenB] = useState<string>('');
   const [isCreatingPair, setIsCreatingPair] = useState(false);
-  const [customTokens, setCustomTokens] = useState<CustomToken[]>([]);
-  
-  // Load custom tokens
-  useEffect(() => {
-    const stored = localStorage.getItem('customTokens');
-    if (stored) {
-      try {
-        setCustomTokens(JSON.parse(stored));
-      } catch (e) {
-        console.error('Error loading custom tokens:', e);
-      }
-    }
-  }, []);
+  const { customTokens } = useAllTokens();
 
   // Check if pool already exists
   const { data: existingPool, refetch: refetchExistingPool } = useReadContract({
@@ -89,13 +77,8 @@ export default function CreatePairPage() {
   };
 
   // Handle token selection
-  const handleTokenASelect = (tokenKey: string, token: ExtendedToken) => {
-    setTokenA(tokenKey);
-  };
-
-  const handleTokenBSelect = (tokenKey: string, token: ExtendedToken) => {
-    setTokenB(tokenKey);
-  };
+  const handleTokenASelect = (tokenKey: string) => setTokenA(tokenKey);
+  const handleTokenBSelect = (tokenKey: string) => setTokenB(tokenKey);
 
   // Swap token positions
   const handleSwapTokens = () => {
@@ -117,11 +100,11 @@ export default function CreatePairPage() {
       const timer = setTimeout(() => {
         refetchTotalPools();
         // also try to refresh the getPool result so we can pick up the new pool address
-        try {
-          refetchExistingPool && refetchExistingPool();
-        } catch (e) {
-          // noop
-        }
+          try {
+            refetchExistingPool?.();
+          } catch {
+            // noop
+          }
       }, 5000);
       return () => clearTimeout(timer);
     }
@@ -135,10 +118,10 @@ export default function CreatePairPage() {
   useEffect(() => {
     if (existingPool && existingPool !== "0x0000000000000000000000000000000000000000") {
       try {
-  const stored = localStorage.getItem('customPools');
-  const arr: CustomPool[] = stored ? JSON.parse(stored) as CustomPool[] : [];
-  const poolAddress = existingPool as string;
-  const exists = arr.find((p) => p.poolAddress && p.poolAddress.toLowerCase() === poolAddress.toLowerCase());
+        const stored = localStorage.getItem('customPools');
+        const arr: CustomPool[] = stored ? JSON.parse(stored) as CustomPool[] : [];
+        const poolAddress = existingPool as string;
+        const exists = arr.find((p) => p.poolAddress && p.poolAddress.toLowerCase() === poolAddress.toLowerCase());
         if (!exists) {
           arr.push({
             poolAddress,
@@ -148,8 +131,8 @@ export default function CreatePairPage() {
           });
           localStorage.setItem('customPools', JSON.stringify(arr));
         }
-      } catch (e) {
-        console.error('Error saving custom pool:', e);
+      } catch {
+        console.error('Error saving custom pool:');
       }
     }
   }, [existingPool, tokenA, tokenB, tokenAInfo, tokenBInfo]);
