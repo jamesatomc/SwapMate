@@ -143,7 +143,9 @@ export default function RemoveLiquidityPage() {
   };
 
   const getTokenDecimals = (tokenKey: TokenKey) => {
-    return TOKENS[tokenKey].decimals;
+    // Guard access to TOKENS in case an unknown key is passed
+    const key = tokenKey ?? 'USDC';
+    return TOKENS[key].decimals;
   };
 
   // Reset form when pool changes
@@ -395,12 +397,12 @@ export default function RemoveLiquidityPage() {
                   <span>{getPoolShare()}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenA].symbol} in Pool</span>
-                  <span>{(Number(formatUnits(reserves[0], getTokenDecimals(tokenA))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[tokenA].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{TOKENS[displayTokenAKey].symbol} in Pool</span>
+                  <span>{(Number(formatUnits(reserves[0], getTokenDecimals(displayTokenAKey))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[displayTokenAKey].symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenB].symbol} in Pool</span>
-                  <span>{(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[tokenB].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{TOKENS[displayTokenBKey].symbol} in Pool</span>
+                  <span>{(Number(formatUnits(reserves[1], getTokenDecimals(displayTokenBKey))) * Number(getPoolShare()) / 100).toFixed(6)} {TOKENS[displayTokenBKey].symbol}</span>
                 </div>
               </div>
             </div>
@@ -478,21 +480,21 @@ export default function RemoveLiquidityPage() {
               {/* Token A Amount */}
               <div className="flex items-center justify-between p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-xs font-bold`}>
-                    {TOKENS[tokenA].icon}
+                    <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                      {TOKENS[displayTokenAKey].icon}
+                    </div>
+                    <span className="font-medium">{TOKENS[displayTokenAKey].symbol}</span>
                   </div>
-                  <span className="font-medium">{TOKENS[tokenA].symbol}</span>
-                </div>
                 <span className="font-medium">{parseFloat(amountA).toFixed(6)}</span>
               </div>
 
               {/* Token B Amount */}
               <div className="flex items-center justify-between p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
-                    {TOKENS[tokenB].icon}
+                  <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                    {TOKENS[displayTokenBKey].icon}
                   </div>
-                  <span className="font-medium">{TOKENS[tokenB].symbol}</span>
+                  <span className="font-medium">{TOKENS[displayTokenBKey].symbol}</span>
                 </div>
                 <span className="font-medium">{parseFloat(amountB).toFixed(6)}</span>
               </div>
@@ -553,11 +555,11 @@ export default function RemoveLiquidityPage() {
                 <span>{slippage}%</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Min {TOKENS[tokenA].symbol} Received</span>
+                <span className="text-[var(--muted-text)]">Min {TOKENS[displayTokenAKey].symbol} Received</span>
                 <span>{(parseFloat(amountA) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted-text)]">Min {TOKENS[tokenB].symbol} Received</span>
+                <span className="text-[var(--muted-text)]">Min {TOKENS[displayTokenBKey].symbol} Received</span>
                 <span>{(parseFloat(amountB) * (1 - parseFloat(slippage) / 100)).toFixed(6)}</span>
               </div>
             </div>

@@ -362,6 +362,21 @@ export function useAllTokens() {
         console.error('Error loading custom tokens:', e);
       }
     }
+    const handler = () => {
+      const s = localStorage.getItem('customTokens');
+      if (s) {
+        try {
+          setCustomTokens(JSON.parse(s));
+        } catch (e) {
+          console.error('Error loading custom tokens on event:', e);
+        }
+      } else {
+        setCustomTokens([]);
+      }
+    };
+
+    window.addEventListener('customTokensUpdated', handler);
+    return () => window.removeEventListener('customTokensUpdated', handler);
   }, []);
 
   return { customTokens };

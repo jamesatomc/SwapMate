@@ -38,6 +38,58 @@ export default function AddLiquidityPage() {
     return 'USDC';
   };
 
+  const getTokenDecimals = (tokenKey?: TokenKey | string) => {
+    // Use the display resolver so custom tokens or unknown keys still return a safe decimals value
+    try {
+      return getDisplayToken(tokenKey as string).decimals;
+    } catch (e) {
+      return 18;
+    }
+  };
+  // Helper to resolve a display token object (works for built-in TOKENS and custom tokens saved to localStorage)
+  const getDisplayToken = (keyOrAddress?: string) => {
+    // Default fallback display
+    const fallback = { address: '', name: '', symbol: keyOrAddress || 'TOKEN', decimals: 18, icon: (keyOrAddress ? String(keyOrAddress).charAt(0).toUpperCase() : '?'), color: 'bg-gray-400' };
+
+    if (!keyOrAddress) return fallback;
+
+    // If it's a built-in token key
+    if ((TOKENS as any)[keyOrAddress]) {
+      return (TOKENS as any)[keyOrAddress];
+    }
+
+    // Try to find in saved custom tokens in localStorage
+    try {
+      const stored = localStorage.getItem('customTokens');
+      if (stored) {
+        const list = JSON.parse(stored) as Array<any>;
+        const found = list.find(t => String(t.address).toLowerCase() === String(keyOrAddress).toLowerCase());
+        if (found) {
+          return {
+            address: found.address,
+            name: found.name,
+            symbol: found.symbol,
+            decimals: found.decimals,
+            icon: found.icon || String(found.symbol).charAt(0).toUpperCase(),
+            color: found.color || 'bg-gray-400'
+          };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // Try mapping address to known built-in token key
+    try {
+      const mapped = getTokenKeyFromAddress(keyOrAddress);
+      if ((TOKENS as any)[mapped]) return (TOKENS as any)[mapped];
+    } catch (e) {
+      // ignore
+    }
+
+    return fallback;
+  };
+
   // Resolve current pool info whether built-in or custom
   const isCustomSelection = selectedPool.startsWith('CUSTOM:');
   const poolAddress = isCustomSelection ? selectedPool.split(':')[1] : (POOLS[selectedPool as PoolKey]?.address);
@@ -52,7 +104,7 @@ export default function AddLiquidityPage() {
     if (found) {
       tokenA = (found.tokenAKey as TokenKey) || (found.tokenAAddress ? getTokenKeyFromAddress(found.tokenAAddress) : 'USDC');
       tokenB = (found.tokenBKey as TokenKey) || (found.tokenBAddress ? getTokenKeyFromAddress(found.tokenBAddress) : 'USDC');
-      currentPoolName = found.pairName || `${TOKENS[tokenA].symbol}/${TOKENS[tokenB].symbol}`;
+      currentPoolName = found.pairName || `${getDisplayToken(tokenA).symbol}/${getDisplayToken(tokenB).symbol}`;
       currentPoolDescription = 'Custom pool';
     } else {
       // fallback: try to read on-chain token ordering later via contract reads
@@ -65,10 +117,14 @@ export default function AddLiquidityPage() {
     const built = POOLS[selectedPool as PoolKey] || {} as any;
     tokenA = built.tokenA || 'USDC';
     tokenB = built.tokenB || 'KANARI';
-    currentPoolName = built.name || `${TOKENS[tokenA].symbol}/${TOKENS[tokenB].symbol}`;
+    currentPoolName = built.name || `${getDisplayToken(tokenA).symbol}/${getDisplayToken(tokenB).symbol}`;
     currentPoolDescription = built.description || '';
   }
   const currentPool = { address: poolAddress, tokenA, tokenB, name: currentPoolName, description: currentPoolDescription } as any;
+
+  // Safe display objects for the currently selected tokens (used in JSX to avoid indexing TOKENS[...] directly)
+  const displayA = getDisplayToken(tokenA);
+  const displayB = getDisplayToken(tokenB);
 
   // Contract reads - Native balance
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
@@ -131,15 +187,15 @@ export default function AddLiquidityPage() {
   // Derived helper values for native checks and UX
   const onChainAaddr = onChainTokenA ? String(onChainTokenA).toLowerCase() : null;
   const onChainBaddr = onChainTokenB ? String(onChainTokenB).toLowerCase() : null;
-  const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+  const nativeZero = getDisplayToken('NATIVE').address.toLowerCase();
   const poolRequiresNative = onChainAaddr === nativeZero || onChainBaddr === nativeZero;
 
   // Preview the native amount required (if inputs are available) so we can disable the button when balance is insufficient
   let previewNativeRequired: bigint | null = null;
   try {
     if ((onChainAaddr || onChainBaddr) && (amountA || amountB)) {
-      const decimalsA = TOKENS[tokenA].decimals;
-      const decimalsB = TOKENS[tokenB].decimals;
+  const decimalsA = getTokenDecimals(tokenA);
+  const decimalsB = getTokenDecimals(tokenB);
       const aWei = amountA ? parseUnits(amountA, decimalsA) : BigInt(0);
       const bWei = amountB ? parseUnits(amountB, decimalsB) : BigInt(0);
       if (onChainAaddr === nativeZero) previewNativeRequired = aWei;
@@ -243,9 +299,7 @@ export default function AddLiquidityPage() {
     }
   };
 
-  const getTokenDecimals = (tokenKey: TokenKey) => {
-    return TOKENS[tokenKey].decimals;
-  };
+  // (replaced by a safer getTokenDecimals above which resolves custom tokens)
 
   const isNativeToken = (tokenKey: TokenKey) => {
     return tokenKey === 'NATIVE';
@@ -316,14 +370,14 @@ export default function AddLiquidityPage() {
       
       // Determine native value according to on-chain token ordering when available
       let nativeValue = BigInt(0);
-      const aAddrRaw = onChainTokenA || TOKENS[tokenA].address;
-      const bAddrRaw = onChainTokenB || TOKENS[tokenB].address;
+  const aAddrRaw = onChainTokenA || getDisplayToken(tokenA).address;
+  const bAddrRaw = onChainTokenB || getDisplayToken(tokenB).address;
       if (!onChainTokenA || !onChainTokenB) {
         console.warn('onChain token addresses not available yet; falling back to local POOLS mapping. This may cause Incorrect native value errors.');
       }
       const aAddr = String(aAddrRaw).toLowerCase();
       const bAddr = String(bAddrRaw).toLowerCase();
-      const nativeZero = TOKENS.NATIVE.address.toLowerCase();
+  const nativeZero = getDisplayToken('NATIVE').address.toLowerCase();
       if (aAddr === nativeZero) nativeValue += amountAWei;
       if (bAddr === nativeZero) nativeValue += amountBWei;
 
@@ -464,11 +518,11 @@ export default function AddLiquidityPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex items-center -space-x-2">
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold z-10`}>
-                      {TOKENS[tokenA].icon}
+                    <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold z-10`}>
+                      {displayA.icon}
                     </div>
-                    <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                      {TOKENS[tokenB].icon}
+                    <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
+                      {displayB.icon}
                     </div>
                   </div>
                   <div>
@@ -495,11 +549,11 @@ export default function AddLiquidityPage() {
                       }`}
                     >
                       <div className="flex items-center -space-x-2">
-                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenA].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
-                          {TOKENS[pool.tokenA].icon}
+                        <div className={`w-6 h-6 rounded-full ${getDisplayToken(pool.tokenA).color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                          {getDisplayToken(pool.tokenA).icon}
                         </div>
-                        <div className={`w-6 h-6 rounded-full ${TOKENS[pool.tokenB].color} flex items-center justify-center text-white text-xs font-bold`}>
-                          {TOKENS[pool.tokenB].icon}
+                        <div className={`w-6 h-6 rounded-full ${getDisplayToken(pool.tokenB).color} flex items-center justify-center text-white text-xs font-bold`}>
+                          {getDisplayToken(pool.tokenB).icon}
                         </div>
                       </div>
                       <div className="text-left">
@@ -518,9 +572,10 @@ export default function AddLiquidityPage() {
                       {customPools.map((p) => {
                         const addr = String(p.poolAddress || p.poolAddress).toLowerCase();
                         const key = `CUSTOM:${addr}`;
-                        const aKey = (p.tokenAKey as TokenKey) || getTokenKeyFromAddress(p.tokenAAddress);
-                        const bKey = (p.tokenBKey as TokenKey) || getTokenKeyFromAddress(p.tokenBAddress);
-                        const name = p.pairName || `${TOKENS[aKey].symbol}/${TOKENS[bKey].symbol}`;
+                        // resolve display tokens (may be built-in key or custom token address)
+                        const aDisplay = getDisplayToken(p.tokenAKey || p.tokenAAddress);
+                        const bDisplay = getDisplayToken(p.tokenBKey || p.tokenBAddress);
+                        const name = p.pairName || `${aDisplay.symbol}/${bDisplay.symbol}`;
                         return (
                           <button
                             key={key}
@@ -533,11 +588,11 @@ export default function AddLiquidityPage() {
                             }`}
                           >
                             <div className="flex items-center -space-x-2">
-                              <div className={`w-6 h-6 rounded-full ${TOKENS[aKey].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
-                                {TOKENS[aKey].icon}
+                              <div className={`w-6 h-6 rounded-full ${aDisplay.color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                                {aDisplay.icon}
                               </div>
-                              <div className={`w-6 h-6 rounded-full ${TOKENS[bKey].color} flex items-center justify-center text-white text-xs font-bold`}>
-                                {TOKENS[bKey].icon}
+                              <div className={`w-6 h-6 rounded-full ${bDisplay.color} flex items-center justify-center text-white text-xs font-bold`}>
+                                {bDisplay.icon}
                               </div>
                             </div>
                             <div className="text-left">
@@ -571,12 +626,12 @@ export default function AddLiquidityPage() {
               <h3 className="text-lg font-semibold mb-3">Pool Information</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenA].symbol} Reserve</span>
-                  <span>{formatUnits(reserves[0], getTokenDecimals(tokenA))} {TOKENS[tokenA].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{displayA.symbol} Reserve</span>
+                  <span>{formatUnits(reserves[0], getTokenDecimals(tokenA))} {displayA.symbol}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--muted-text)]">{TOKENS[tokenB].symbol} Reserve</span>
-                  <span>{formatUnits(reserves[1], getTokenDecimals(tokenB))} {TOKENS[tokenB].symbol}</span>
+                  <span className="text-[var(--muted-text)]">{displayB.symbol} Reserve</span>
+                  <span>{formatUnits(reserves[1], getTokenDecimals(tokenB))} {displayB.symbol}</span>
                 </div>
                 {lpBalance && (
                   <div className="flex justify-between">
@@ -591,17 +646,17 @@ export default function AddLiquidityPage() {
           {/* Token A Input */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-[var(--muted-text)]">{TOKENS[tokenA].symbol} Amount</label>
+              <label className="text-sm font-medium text-[var(--muted-text)]">{displayA.symbol} Amount</label>
               <span className="text-sm text-[var(--muted-text)]">
-                Balance: {parseFloat(getBalance(tokenA)).toFixed(4)} {TOKENS[tokenA].symbol}
+                Balance: {parseFloat(getBalance(tokenA)).toFixed(4)} {displayA.symbol}
               </span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
               <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full ${TOKENS[tokenA].color} flex items-center justify-center text-white text-sm font-bold`}>
-                  {TOKENS[tokenA].icon}
+                <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold`}>
+                  {displayA.icon}
                 </div>
-                  <span className="font-medium">{TOKENS[tokenA].symbol}</span>
+                  <span className="font-medium">{displayA.symbol}</span>
                 </div>
                 <input
                   type="text"
@@ -625,17 +680,17 @@ export default function AddLiquidityPage() {
           {/* Token B Input */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-[var(--muted-text)]">{TOKENS[tokenB].symbol} Amount</label>
+              <label className="text-sm font-medium text-[var(--muted-text)]">{displayB.symbol} Amount</label>
               <span className="text-sm text-[var(--muted-text)]">
-                Balance: {parseFloat(getBalance(tokenB)).toFixed(4)} {TOKENS[tokenB].symbol}
+                Balance: {parseFloat(getBalance(tokenB)).toFixed(4)} {displayB.symbol}
               </span>
             </div>
             <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
               <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full ${TOKENS[tokenB].color} flex items-center justify-center text-white text-sm font-bold`}>
-                  {TOKENS[tokenB].icon}
+                <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
+                  {displayB.icon}
                 </div>
-                <span className="font-medium">{TOKENS[tokenB].symbol}</span>
+                <span className="font-medium">{displayB.symbol}</span>
                 </div>
                 <input
                   type="text"
@@ -686,9 +741,9 @@ export default function AddLiquidityPage() {
                 <button
                   onClick={() => handleApprove(tokenA)}
                   disabled={isApproving}
-                  className={`w-full py-3 ${TOKENS[tokenA].color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
+                  className={`w-full py-3 ${displayA.color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
                 >
-                  {isApproving ? 'Approving...' : `Approve ${TOKENS[tokenA].symbol}`}
+                  {isApproving ? 'Approving...' : `Approve ${displayA.symbol}`}
                 </button>
               )}
               
@@ -696,9 +751,9 @@ export default function AddLiquidityPage() {
                 <button
                   onClick={() => handleApprove(tokenB)}
                   disabled={isApproving}
-                  className={`w-full py-3 ${TOKENS[tokenB].color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
+                  className={`w-full py-3 ${displayB.color} text-white font-medium rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition`}
                 >
-                  {isApproving ? 'Approving...' : `Approve ${TOKENS[tokenB].symbol}`}
+                  {isApproving ? 'Approving...' : `Approve ${displayB.symbol}`}
                 </button>
               )}
 
@@ -737,7 +792,7 @@ export default function AddLiquidityPage() {
               {reserves && (
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--muted-text)]">Exchange Rate</span>
-                  <span>1 {TOKENS[tokenA].symbol} = {(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) / Number(formatUnits(reserves[0], getTokenDecimals(tokenA)))).toFixed(6)} {TOKENS[tokenB].symbol}</span>
+                  <span>1 {displayA.symbol} = {(Number(formatUnits(reserves[1], getTokenDecimals(tokenB))) / Number(formatUnits(reserves[0], getTokenDecimals(tokenA)))).toFixed(6)} {displayB.symbol}</span>
                 </div>
               )}
             </div>

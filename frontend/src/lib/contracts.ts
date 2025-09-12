@@ -758,22 +758,3 @@ export const DEX_FACTORY_ABI = [
     ]
   }
 ] as const;
-
-// Chain configuration for Alpen Labs testnet
-export const ALPEN_TESTNET = {
-  id: 2892,
-  name: 'Alpen Labs Testnet',
-  network: 'alpenlabs-testnet',
-  nativeCurrency: {
-    decimals: 18,
-    name: 'sBTC',
-    symbol: 'sBTC',
-  },
-  rpcUrls: {
-    public: { http: ['https://rpc.testnet.alpenlabs.io'] },
-    default: { http: ['https://rpc.testnet.alpenlabs.io'] },
-  },
-  blockExplorers: {
-    default: { name: 'Explorer', url: 'https://explorer.testnet.alpenlabs.io' },
-  },
-} as const;

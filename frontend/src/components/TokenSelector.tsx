@@ -32,6 +32,22 @@ export default function TokenSelector({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { customTokens } = useAllTokens();
+  const [localCustomTokens, setLocalCustomTokens] = useState<CustomToken[]>(customTokens || []);
+
+  // Ensure dropdown shows newly added tokens immediately by re-reading localStorage when opened
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const stored = localStorage.getItem('customTokens');
+      if (stored) {
+        setLocalCustomTokens(JSON.parse(stored));
+      } else {
+        setLocalCustomTokens([]);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [isOpen]);
 
   // Combine built-in tokens with custom tokens
   const allTokens: Record<string, ExtendedToken> = {
@@ -49,7 +65,7 @@ export default function TokenSelector({
       ])
     ),
     ...Object.fromEntries(
-      customTokens.map(token => [
+      (localCustomTokens.length ? localCustomTokens : customTokens).map(token => [
         token.address, // Use address as key for custom tokens
         {
           address: token.address,

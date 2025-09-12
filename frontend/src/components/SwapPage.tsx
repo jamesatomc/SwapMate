@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseUnits, formatUnits, Address } from 'viem';
-import { CONTRACTS, SWAP_ABI, KANARI_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, SWAP_ABI, KANARI_ABI, DEX_FACTORY_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 import TokenManager, { CustomToken } from './TokenManager';
 import TokenSelector, { ExtendedToken, getTokenInfo } from './TokenSelector';
 
@@ -22,10 +22,34 @@ export default function SwapPage() {
   const [priceImpact, setPriceImpact] = useState('0');
 
   // Find available pools
-  const availablePool = Object.values(POOLS).find(pool => 
+  // Load custom pools (created via CreatePairPage) and include them when searching for a matching pool
+  const [customPools, setCustomPools] = useState<any[]>([]);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('customPools');
+      if (stored) setCustomPools(JSON.parse(stored));
+    } catch (e) {
+      console.error('Error loading custom pools:', e);
+    }
+  }, []);
+
+  // Find available pools in built-in POOLS or custom pools
+  const availablePoolBuiltIn = Object.values(POOLS).find(pool => 
     (pool.tokenA === tokenIn && pool.tokenB === tokenOut) ||
     (pool.tokenA === tokenOut && pool.tokenB === tokenIn)
   );
+
+  const availablePoolCustom = customPools.find((p) => {
+    // p may contain tokenAKey/tokenBKey or token addresses
+    const aKey = p.tokenAKey || null;
+    const bKey = p.tokenBKey || null;
+    if (aKey && bKey) {
+      return (aKey === tokenIn && bKey === tokenOut) || (aKey === tokenOut && bKey === tokenIn);
+    }
+    return false;
+  });
+
+  const availablePool = availablePoolBuiltIn || (availablePoolCustom ? { address: availablePoolCustom.poolAddress, tokenA: availablePoolCustom.tokenAKey, tokenB: availablePoolCustom.tokenBKey, name: availablePoolCustom.pairName } : undefined);
 
   const poolAddress = availablePool?.address;
 
@@ -64,28 +88,45 @@ export default function SwapPage() {
     query: { enabled: !!address && !!poolAddress }
   });
 
+  // Resolve token info objects (built-in or custom)
+  const tokenInInfo = getTokenInfo(tokenIn, customTokens);
+  const tokenOutInfo = getTokenInfo(tokenOut, customTokens);
+
+  // Try to resolve pool address from on-chain factory when possible (covers pools not present in local POOLS mapping)
+  const { data: factoryPoolAddress } = useReadContract({
+    address: CONTRACTS.DEX_FACTORY,
+    abi: DEX_FACTORY_ABI,
+    functionName: 'getPool',
+    args: [tokenInInfo?.address as Address, tokenOutInfo?.address as Address],
+    query: { enabled: !!tokenInInfo?.address && !!tokenOutInfo?.address }
+  });
+
+  // Prefer on-chain factory pool if present, otherwise fallback to availablePool address
+  const resolvedPoolAddress = (factoryPoolAddress && String(factoryPoolAddress) !== '0x0000000000000000000000000000000000000000')
+    ? String(factoryPoolAddress) : poolAddress;
+
   // Get swap quote
   const { data: swapQuote } = useReadContract({
-    address: poolAddress as Address,
+    address: resolvedPoolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'getAmountOut',
     args: [
-      amountIn ? parseUnits(amountIn, getTokenInfo(tokenIn, customTokens)?.decimals || 18) : BigInt(0),
-      getTokenInfo(tokenIn, customTokens)?.address as Address
+      amountIn ? parseUnits(amountIn, tokenInInfo?.decimals || 18) : BigInt(0),
+      tokenInInfo?.address as Address
     ],
-    query: { enabled: !!poolAddress && !!amountIn && parseFloat(amountIn) > 0 }
+    query: { enabled: !!resolvedPoolAddress && !!amountIn && parseFloat(amountIn) > 0 }
   });
 
   // Get price impact
   const { data: priceImpactData } = useReadContract({
-    address: poolAddress as Address,
+    address: resolvedPoolAddress as Address,
     abi: SWAP_ABI,
     functionName: 'getPriceImpact',
     args: [
-      amountIn ? parseUnits(amountIn, getTokenInfo(tokenIn, customTokens)?.decimals || 18) : BigInt(0),
-      getTokenInfo(tokenIn, customTokens)?.address as Address
+      amountIn ? parseUnits(amountIn, tokenInInfo?.decimals || 18) : BigInt(0),
+      tokenInInfo?.address as Address
     ],
-    query: { enabled: !!poolAddress && !!amountIn && parseFloat(amountIn) > 0 }
+    query: { enabled: !!resolvedPoolAddress && !!amountIn && parseFloat(amountIn) > 0 }
   });
 
   // Contract writes
@@ -342,17 +383,29 @@ export default function SwapPage() {
           </div>
 
           {/* Slippage Settings */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             <label className="text-sm font-medium text-[var(--muted-text)]">Slippage Tolerance</label>
-            <div className="flex items-center gap-2">
+            <div className="flex gap-2">
+              {['0.1', '0.5', '1.0'].map((preset) => (
+                <button
+                  key={preset}
+                  onClick={() => setSlippage(preset)}
+                  className={`px-3 py-1 rounded-lg text-sm transition ${
+                    slippage === preset
+                      ? 'bg-[var(--primary-color)] text-white'
+                      : 'bg-[var(--background)]/50 text-[var(--text-color)] hover:bg-[var(--background)]/80'
+                  }`}
+                >
+                  {preset}%
+                </button>
+              ))}
               <input
-                type="number"
+                type="text"
                 value={slippage}
                 onChange={(e) => setSlippage(e.target.value)}
                 className="flex-1 px-3 py-1 bg-[var(--background)]/50 rounded-lg text-sm text-center outline-none border border-white/5 focus:border-[var(--primary-color)]/50"
                 placeholder="0.5"
               />
-              <span className="text-sm text-[var(--muted-text)]">%</span>
             </div>
           </div>
 
