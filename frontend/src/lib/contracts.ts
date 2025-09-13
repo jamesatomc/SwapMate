@@ -2,12 +2,12 @@
 export const CONTRACTS = {
   // Token addresses
   USDC: "0xcC11f370fe6126b36D634FC1D2CCbC1F72599199" as const,
-  KANARI: "0x022F8de9adF2B8Aea32C715F79b5f05A611625EC" as const,
+  KANARI: "0xcefB699Cf39C5462CaD926920f869a252FDE09EC" as const,
 
   // DEX Infrastructure
-  DEX_FACTORY: "0xad255Cc5437AcA030b1f8D41054CC2bfeaBfb3a9" as const,
-  KANARI_NATIVE_POOL: "0x71D5414715a3957dFDeaDB2a7368c5768C0683D3" as const,
-  FARMING: "0x1871A6c114B62A8Ea0855b1a29B7Df4341ED9a0d" as const,
+  DEX_FACTORY: "0xb24361e65059537C684014FC9aa903d60B3290dc" as const,
+  KANARI_NATIVE_POOL: "0xeD415A516A0F83e27314Ddc8fb12bB3fd572D260" as const,
+  FARMING: "0xEA4054041b1c65308a0D2F2d88DEa0f107A0c85A" as const,
 
 } as const;
 
@@ -15,9 +15,9 @@ export const CONTRACTS = {
 export const POOLS = {
   'KANARI-NATIVE': {
     address: CONTRACTS.KANARI_NATIVE_POOL,
-    tokenA: 'KANARI' as TokenKey,
-    tokenB: 'NATIVE' as TokenKey,
-    name: 'KANARI/sBTC',
+    tokenA: 'NATIVE' as TokenKey,
+    tokenB: 'KANARI' as TokenKey,
+    name: 'sBTC/KANARI',
     description: 'KANARI paired with native sBTC (Dev fee: 0.1%)',
     hasFeeCollection: true,
     devFee: '0.1%',
@@ -524,7 +524,6 @@ export const SWAP_ABI = [
 
 // Farming Contract ABI (NEW)
 export const FARMING_ABI = [
-  // View functions
   {
     "type": "function",
     "name": "lpToken",
@@ -537,13 +536,6 @@ export const FARMING_ABI = [
     "name": "rewardToken",
     "inputs": [],
     "outputs": [{ "type": "address", "name": "" }],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "totalStaked",
-    "inputs": [],
-    "outputs": [{ "type": "uint256", "name": "" }],
     "stateMutability": "view"
   },
   {
@@ -562,9 +554,23 @@ export const FARMING_ABI = [
   },
   {
     "type": "function",
-    "name": "paused",
+    "name": "lastUpdateTime",
     "inputs": [],
-    "outputs": [{ "type": "bool", "name": "" }],
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "rewardPerTokenStored",
+    "inputs": [],
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalSupply",
+    "inputs": [],
+    "outputs": [{ "type": "uint256", "name": "" }],
     "stateMutability": "view"
   },
   {
@@ -576,19 +582,25 @@ export const FARMING_ABI = [
   },
   {
     "type": "function",
-    "name": "earned",
-    "inputs": [{ "type": "address", "name": "account" }],
+    "name": "lastTimeRewardApplicable",
+    "inputs": [],
     "outputs": [{ "type": "uint256", "name": "" }],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "getRewardForDuration",
+    "name": "rewardPerToken",
     "inputs": [],
     "outputs": [{ "type": "uint256", "name": "" }],
     "stateMutability": "view"
   },
-  // State-changing functions
+  {
+    "type": "function",
+    "name": "earned",
+    "inputs": [{ "type": "address", "name": "account" }],
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view"
+  },
   {
     "type": "function",
     "name": "stake",
@@ -624,16 +636,53 @@ export const FARMING_ABI = [
     "outputs": [],
     "stateMutability": "nonpayable"
   },
-  // Owner functions
   {
     "type": "function",
     "name": "fundRewards",
     "inputs": [
-      { "type": "uint256", "name": "amount" },
+      { "type": "uint256", "name": "rewardAmount" },
       { "type": "uint256", "name": "duration" }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "recoverERC20",
+    "inputs": [
+      { "type": "address", "name": "token" },
+      { "type": "uint256", "name": "amount" }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getPeriodFinish",
+    "inputs": [],
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRewardRate",
+    "inputs": [],
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRewardForDuration",
+    "inputs": [],
+    "outputs": [{ "type": "uint256", "name": "" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isPaused",
+    "inputs": [],
+    "outputs": [{ "type": "bool", "name": "" }],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -678,10 +727,28 @@ export const FARMING_ABI = [
     "type": "event",
     "name": "RewardAdded",
     "inputs": [
-      { "type": "uint256", "name": "reward", "indexed": false }
+      { "type": "uint256", "name": "reward", "indexed": false },
+      { "type": "uint256", "name": "duration", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "TokenRecovered",
+    "inputs": [
+      { "type": "address", "name": "token", "indexed": true },
+      { "type": "uint256", "name": "amount", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "EmergencyWithdraw",
+    "inputs": [
+      { "type": "address", "name": "user", "indexed": true },
+      { "type": "uint256", "name": "amount", "indexed": false }
     ]
   }
 ] as const;
+
 
 // DEX Factory ABI for creating new trading pairs
 export const DEX_FACTORY_ABI = [

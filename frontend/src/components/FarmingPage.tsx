@@ -50,13 +50,14 @@ export default function FarmingPage() {
   const { data: totalStakedData } = useReadContract({
     address: CONTRACTS.FARMING,
     abi: FARMING_ABI,
-    functionName: 'totalStaked',
+    functionName: 'totalSupply',
   });
 
   const { data: rewardRateData } = useReadContract({
     address: CONTRACTS.FARMING,
     abi: FARMING_ABI,
-    functionName: 'rewardRate',
+    // use the helper that returns a human-scaled reward rate
+    functionName: 'getRewardRate',
   });
 
   const { data: periodFinishData } = useReadContract({
@@ -68,7 +69,7 @@ export default function FarmingPage() {
   const { data: pausedData } = useReadContract({
     address: CONTRACTS.FARMING,
     abi: FARMING_ABI,
-    functionName: 'paused',
+    functionName: 'isPaused',
   });
 
   // Update state when data changes
@@ -76,8 +77,10 @@ export default function FarmingPage() {
     if (lpBalanceData) setLpBalance(formatEther(lpBalanceData));
     if (stakedData) setStakedBalance(formatEther(stakedData));
     if (earnedData) setEarnedRewards(formatEther(earnedData));
-    if (totalStakedData) setTotalStaked(formatEther(totalStakedData));
-    if (rewardRateData) setRewardRate(formatEther(rewardRateData));
+  if (totalStakedData) setTotalStaked(formatEther(totalStakedData));
+  // getRewardRate() returns the token/sec value already scaled to token units
+  // but it's still a BigInt in wei-style units; formatEther will convert to decimal
+  if (rewardRateData) setRewardRate(formatEther(rewardRateData));
     if (periodFinishData) setPeriodFinish(Number(periodFinishData));
     if (pausedData !== undefined) setIsPaused(pausedData);
   }, [lpBalanceData, stakedData, earnedData, totalStakedData, rewardRateData, periodFinishData, pausedData]);

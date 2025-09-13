@@ -126,6 +126,6 @@ contract Kanari is ERC20, Ownable {
 
     /// @notice Get circulating supply (total - burned)
     function circulatingSupply() external view returns (uint256) {
-    return totalSupply() - totalBurned;
+        return totalSupply() - totalBurned;
     }
 }
