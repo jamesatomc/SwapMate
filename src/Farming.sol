@@ -196,15 +196,22 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @notice Explicit getter for reward rate (convenience for frontends)
+    /// @dev Internally `rewardRate` is stored with 1e18 precision to avoid
+    /// truncation when computing fractional rates. Frontends expect a plain
+    /// token units / second value (i.e., without the extra 1e18 factor), so
+    /// this function scales it back down. For example, if `rewardRate` is
+    /// stored as `0.0317098 * 1e18` then this function returns `0.0317098 * 1e0` in
+    /// token base units (still in wei for ERC20 with 18 decimals).
     function getRewardRate() external view returns (uint256) {
-        return rewardRate;
+        return rewardRate / 1e18;
     }
 
     /// @notice Returns total reward remaining to be distributed for the current period (scaled back to token units)
     function getRewardForDuration() external view returns (uint256) {
         if (block.timestamp >= periodFinish) return 0;
         // rewardRate is scaled by 1e18; multiply by remaining seconds then divide by 1e18
-        uint256 remaining = periodFinish - lastUpdateTime;
+        // Use remaining seconds from now (periodFinish - block.timestamp)
+        uint256 remaining = periodFinish - block.timestamp;
         return (rewardRate * remaining) / 1e18;
     }
 

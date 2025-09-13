@@ -310,7 +310,11 @@ contract ConstantProductAMM is ReentrancyGuard {
     }
 
     // Internal helper: compute amountOut assuming dev fee has already been removed from amountIn
-    function _getAmountOutInternal(uint256 amountInAfterDevFee, address tokenIn) internal view returns (uint256 amountOut) {
+    function _getAmountOutInternal(uint256 amountInAfterDevFee, address tokenIn)
+        internal
+        view
+        returns (uint256 amountOut)
+    {
         require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
         require(amountInAfterDevFee > 0, "AmountIn must be > 0");
 
