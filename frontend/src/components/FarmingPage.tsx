@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
-import { CONTRACTS, FARMING_ABI, SWAP_ABI, KANARI_ABI } from '@/lib/contracts';
+import { CONTRACTS, FARMING_ABI, SWAP_ABI } from '@/lib/contracts';
 
 export default function FarmingPage() {
   const { address } = useAccount();
@@ -168,6 +168,18 @@ export default function FarmingPage() {
             <div className="text-right">
               <div className="text-xs text-[var(--muted-text)]">Reward Rate</div>
               <div className="text-lg font-medium text-orange-600">{parseFloat(rewardRate).toFixed(6)}</div>
+            </div>
+          </div>
+
+          {/* Time remaining and APR estimate */}
+          <div className="mt-3 p-3 bg-[var(--background)]/20 rounded-lg border border-white/5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-[var(--muted-text)]">Farming ends in</span>
+              <span>{daysRemaining}d {hoursRemaining}h</span>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[var(--muted-text)]">Estimated APR</span>
+              <span className="text-orange-600">{aprEstimate.toFixed(2)}%</span>
             </div>
           </div>
 

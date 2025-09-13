@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance, usePublicClient } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, DEX_FACTORY_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 import { useAllTokens } from './TokenManager';
 
 type CustomPool = {
@@ -19,6 +19,7 @@ export default function RemoveLiquidityPage() {
   // State for removing liquidity
   const [selectedPool, setSelectedPool] = useState<string>('KANARI-NATIVE');
   const [customPools, setCustomPools] = useState<CustomPool[]>([]);
+  const [factoryPools, setFactoryPools] = useState<string[]>([]);
   const [lpAmount, setLpAmount] = useState('');
   const [percentage, setPercentage] = useState('25');
   const [slippage, setSlippage] = useState('0.5');
@@ -86,6 +87,44 @@ export default function RemoveLiquidityPage() {
       console.error('Error loading custom pools');
     }
   }, []);
+
+  const publicClient = usePublicClient();
+
+  // Fetch on-chain factory pools
+  useEffect(() => {
+    let mounted = true;
+    const fetchFactoryPools = async () => {
+      try {
+        if (!publicClient) return;
+        const totalRes = await publicClient.readContract({
+          address: CONTRACTS.DEX_FACTORY,
+          abi: DEX_FACTORY_ABI,
+          functionName: 'allPoolsLength',
+        });
+        const total = Number(totalRes || 0);
+        const pools: string[] = [];
+        for (let i = 0; i < total; i++) {
+          try {
+            const p = await publicClient.readContract({
+              address: CONTRACTS.DEX_FACTORY,
+              abi: DEX_FACTORY_ABI,
+              functionName: 'allPools',
+              args: [BigInt(i)],
+            });
+            if (p && typeof p === 'string') pools.push(p);
+          } catch {
+            // ignore
+          }
+        }
+        if (mounted) setFactoryPools(pools);
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchFactoryPools();
+    return () => { mounted = false; };
+  }, [publicClient]);
 
   const { customTokens } = useAllTokens();
 
@@ -351,6 +390,36 @@ export default function RemoveLiquidityPage() {
                             <div className="text-sm text-[var(--muted-text)]">{p.poolAddress}</div>
                           </div>
                           {selectedPool === `CUSTOM:${p.poolAddress}` && (
+                            <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {factoryPools.length > 0 && (
+                    <div className="border-t border-white/5">
+                      {factoryPools.map((addr) => (
+                        <button
+                          key={addr}
+                          onClick={() => {
+                            setSelectedPool(`CUSTOM:${addr}`);
+                            setShowPoolSelect(false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${selectedPool === `CUSTOM:${addr}` ? 'bg-[var(--primary-color)]/10' : ''}`}
+                        >
+                          <div className="flex items-center -space-x-2">
+                            <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenAKey].color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                              {TOKENS[displayTokenAKey].icon}
+                            </div>
+                            <div className={`w-6 h-6 rounded-full ${TOKENS[displayTokenBKey].color} flex items-center justify-center text-white text-xs font-bold`}>
+                              {TOKENS[displayTokenBKey].icon}
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <div className="font-medium">Factory pool</div>
+                            <div className="text-sm text-[var(--muted-text)]">{addr}</div>
+                          </div>
+                          {selectedPool === `CUSTOM:${addr}` && (
                             <div className="ml-auto text-[var(--primary-color)]">✓</div>
                           )}
                         </button>

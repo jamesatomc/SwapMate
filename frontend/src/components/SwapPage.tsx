@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseUnits, formatUnits, Address } from 'viem';
-import { CONTRACTS, SWAP_ABI, KANARI_ABI, DEX_FACTORY_ABI, POOLS } from '@/lib/contracts';
+import { CONTRACTS, SWAP_ABI, KANARI_ABI, USDC_ABI, DEX_FACTORY_ABI, POOLS } from '@/lib/contracts';
 import TokenManager, { useAllTokens } from './TokenManager';
 import TokenSelector, { getTokenInfo } from './TokenSelector';
 
@@ -70,7 +70,6 @@ export default function SwapPage() {
     args: [address as Address],
     query: { enabled: !!address }
   });
-
   // Token allowances
   const { data: kanariAllowance } = useReadContract({
     address: CONTRACTS.KANARI,
@@ -83,6 +82,27 @@ export default function SwapPage() {
   // Resolve token info objects (built-in or custom)
   const tokenInInfo = getTokenInfo(tokenIn, customTokens);
   const tokenOutInfo = getTokenInfo(tokenOut, customTokens);
+
+  const isNativeToken = (tokenKey: string) => {
+    return tokenKey === 'NATIVE';
+  };
+
+  // Generic ERC20 balances for the currently selected tokens (if not native)
+  const { data: tokenInGenericBalance } = useReadContract({
+    address: tokenInInfo?.address as Address,
+    abi: USDC_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+    query: { enabled: !!address && !!tokenInInfo && !isNativeToken(tokenIn) }
+  });
+
+  const { data: tokenOutGenericBalance } = useReadContract({
+    address: tokenOutInfo?.address as Address,
+    abi: USDC_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+    query: { enabled: !!address && !!tokenOutInfo && !isNativeToken(tokenOut) }
+  });
 
   // Try to resolve pool address from on-chain factory when possible (covers pools not present in local POOLS mapping)
   const { data: factoryPoolAddress } = useReadContract({
@@ -131,26 +151,47 @@ export default function SwapPage() {
 
   // Helper functions
   const getTokenBalance = (tokenKey: string) => {
-    if (tokenKey === 'NATIVE') {
-      return nativeBalance?.value || BigInt(0);
-    } else if (tokenKey === 'KANARI') {
+    const tokenInfo = getTokenInfo(tokenKey, customTokens);
+    if (!tokenInfo) return BigInt(0);
+
+    // Native
+    if (tokenKey === 'NATIVE') return nativeBalance?.value || BigInt(0);
+
+    // Known KANARI (we already fetch specifically)
+    if (tokenInfo.address && String(tokenInfo.address).toLowerCase() === String(CONTRACTS.KANARI).toLowerCase()) {
       return kanariBalance || BigInt(0);
     }
+
+    // If token matches the currently selected input or output, return their generic balance reads
+    try {
+      if (tokenInfo.address && tokenInInfo && String(tokenInfo.address).toLowerCase() === String(tokenInInfo.address).toLowerCase()) {
+        return tokenInGenericBalance || BigInt(0);
+      }
+      if (tokenInfo.address && tokenOutInfo && String(tokenInfo.address).toLowerCase() === String(tokenOutInfo.address).toLowerCase()) {
+        return tokenOutGenericBalance || BigInt(0);
+      }
+    } catch {
+      // ignore
+    }
+
+    // Fallback: zero
     return BigInt(0);
   };
 
   const getTokenAllowance = (tokenKey: string) => {
-    if (tokenKey === 'NATIVE') {
-      return BigInt(0);
-    } else if (tokenKey === 'KANARI') {
+    const tokenInfo = getTokenInfo(tokenKey, customTokens);
+    if (!tokenInfo) return BigInt(0);
+    if (tokenKey === 'NATIVE') return BigInt(0);
+
+    // KANARI allowance (already fetched)
+    if (tokenInfo.address && String(tokenInfo.address).toLowerCase() === String(CONTRACTS.KANARI).toLowerCase()) {
       return kanariAllowance || BigInt(0);
     }
+
+    // Other tokens: not fetched here (could add dynamic allowance fetches if needed)
     return BigInt(0);
   };
 
-  const isNativeToken = (tokenKey: string) => {
-    return tokenKey === 'NATIVE';
-  };
 
   const getBalance = (tokenKey: string) => {
     const balance = getTokenBalance(tokenKey);
