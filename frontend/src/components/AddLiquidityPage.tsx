@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, useBalance, usePublicClient } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, DEX_FACTORY_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 import { useAllTokens } from './TokenManager';
 
 export default function AddLiquidityPage() {
@@ -21,6 +21,7 @@ export default function AddLiquidityPage() {
   // Load custom pools saved by CreatePairPage (persisted to localStorage)
   type CustomPool = { poolAddress: string; tokenAKey?: string; tokenBKey?: string; tokenAAddress?: string; tokenBAddress?: string; pairName?: string };
   const [customPools, setCustomPools] = useState<CustomPool[]>([]);
+  const [factoryPools, setFactoryPools] = useState<string[]>([]);
   useEffect(() => {
     try {
       const stored = localStorage.getItem('customPools');
@@ -29,6 +30,44 @@ export default function AddLiquidityPage() {
       console.error('Error loading custom pools');
     }
   }, []);
+
+  const publicClient = usePublicClient();
+
+  // Fetch pools from on-chain factory so we can display pools created by others
+  useEffect(() => {
+    let mounted = true;
+    const fetchFactoryPools = async () => {
+      try {
+        if (!publicClient) return;
+        const totalRes = await publicClient.readContract({
+          address: CONTRACTS.DEX_FACTORY,
+          abi: DEX_FACTORY_ABI,
+          functionName: 'allPoolsLength',
+        });
+        const total = Number(totalRes || 0);
+        const pools: string[] = [];
+        for (let i = 0; i < total; i++) {
+          try {
+            const p = await publicClient.readContract({
+              address: CONTRACTS.DEX_FACTORY,
+              abi: DEX_FACTORY_ABI,
+              functionName: 'allPools',
+              args: [BigInt(i)],
+            });
+            if (p && typeof p === 'string') pools.push(p);
+          } catch {
+            // ignore individual failures
+          }
+        }
+        if (mounted) setFactoryPools(pools);
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchFactoryPools();
+    return () => { mounted = false; };
+  }, [publicClient]);
 
   // Helper to map token address ->TokenKey when possible
   const getTokenKeyFromAddress = (tokenAddress?: string): TokenKey => {
@@ -605,6 +644,38 @@ export default function AddLiquidityPage() {
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+                  {factoryPools && factoryPools.length > 0 && (
+                    <div className="border-t border-white/5">
+                      {factoryPools.map((addr) => (
+                        <button
+                          key={addr}
+                          onClick={() => {
+                            setSelectedPool(`CUSTOM:${addr}`);
+                            setShowPoolSelect(false);
+                          }}
+                          className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
+                            selectedPool === `CUSTOM:${addr}` ? 'bg-[var(--primary-color)]/10' : ''
+                          }`}
+                        >
+                          <div className="flex items-center -space-x-2">
+                            <div className={`w-6 h-6 rounded-full ${getDisplayToken(currentPool.tokenA).color} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                              {getDisplayToken(currentPool.tokenA).icon}
+                            </div>
+                            <div className={`w-6 h-6 rounded-full ${getDisplayToken(currentPool.tokenB).color} flex items-center justify-center text-white text-xs font-bold`}>
+                              {getDisplayToken(currentPool.tokenB).icon}
+                            </div>
+                          </div>
+                          <div className="text-left">
+                            <div className="font-medium">Factory pool</div>
+                            <div className="text-sm text-[var(--muted-text)]">{addr}</div>
+                          </div>
+                          {selectedPool === `CUSTOM:${addr}` && (
+                            <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                          )}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
