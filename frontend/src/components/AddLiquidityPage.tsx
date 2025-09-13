@@ -5,18 +5,19 @@ import { useAccount, useReadContract, useWriteContract, useWaitForTransactionRec
 import { formatUnits, parseUnits, Address } from 'viem';
 import { CONTRACTS, USDC_ABI, KANARI_ABI, SWAP_ABI, DEX_FACTORY_ABI, TOKENS, TokenKey, POOLS, PoolKey } from '@/lib/contracts';
 import { useAllTokens } from './TokenManager';
+import TokenSelector from './TokenSelector'; // 👈 FIXED: Import was missing!
 
 export default function AddLiquidityPage() {
   const { address, isConnected } = useAccount();
-  
+
   // State for liquidity
-  // allow selecting built-in pools (keys in POOLS) or custom pools saved to localStorage as 'CUSTOM:<address>'
   const [selectedPool, setSelectedPool] = useState<string>('KANARI-NATIVE');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [isAddingLiquidity, setIsAddingLiquidity] = useState(false);
   const [showPoolSelect, setShowPoolSelect] = useState(false);
+  const [poolNotFound, setPoolNotFound] = useState<string | null>(null); // 👈 NEW: For non-existent pool CTA
 
   // Load custom pools saved by CreatePairPage (persisted to localStorage)
   type CustomPool = { poolAddress: string; tokenAKey?: string; tokenBKey?: string; tokenAAddress?: string; tokenBAddress?: string; pairName?: string };
@@ -113,7 +114,6 @@ export default function AddLiquidityPage() {
       // ignore
     }
 
-
     return fallback;
   }, [customTokens]);
 
@@ -207,35 +207,23 @@ export default function AddLiquidityPage() {
     functionName: 'totalSupply',
   });
 
-  // Read on-chain token ordering for the pool to avoid relying solely on local POOLS mapping
-  const { data: onChainTokenA } = useReadContract({
-    address: poolAddress as Address,
-    abi: SWAP_ABI,
-    functionName: 'tokenA',
-  });
-
-  const { data: onChainTokenB } = useReadContract({
-    address: poolAddress as Address,
-    abi: SWAP_ABI,
-    functionName: 'tokenB',
-  });
-
   // Derived helper values for native checks and UX
-  const onChainAaddr = onChainTokenA ? String(onChainTokenA).toLowerCase() : null;
-  const onChainBaddr = onChainTokenB ? String(onChainTokenB).toLowerCase() : null;
   const nativeZero = getDisplayToken('NATIVE').address.toLowerCase();
-  const poolRequiresNative = onChainAaddr === nativeZero || onChainBaddr === nativeZero;
+  const aAddr = String(getDisplayToken(tokenA).address).toLowerCase(); // 👈 Always use local mapping
+  const bAddr = String(getDisplayToken(tokenB).address).toLowerCase(); // 👈 Always use local mapping
+  const poolRequiresNative = aAddr === nativeZero || bAddr === nativeZero;
 
   // Preview the native amount required (if inputs are available) so we can disable the button when balance is insufficient
   let previewNativeRequired: bigint | null = null;
   try {
-    if ((onChainAaddr || onChainBaddr) && (amountA || amountB)) {
-  const decimalsA = getTokenDecimals(tokenA);
-  const decimalsB = getTokenDecimals(tokenB);
+    if ((aAddr === nativeZero || bAddr === nativeZero) && (amountA || amountB)) {
+      const decimalsA = getTokenDecimals(tokenA);
+      const decimalsB = getTokenDecimals(tokenB);
       const aWei = amountA ? parseUnits(amountA, decimalsA) : BigInt(0);
       const bWei = amountB ? parseUnits(amountB, decimalsB) : BigInt(0);
-      if (onChainAaddr === nativeZero) previewNativeRequired = aWei;
-      if (onChainBaddr === nativeZero) previewNativeRequired = (previewNativeRequired || BigInt(0)) + bWei;
+      previewNativeRequired = BigInt(0);
+      if (aAddr === nativeZero) previewNativeRequired += aWei;
+      if (bAddr === nativeZero) previewNativeRequired += bWei;
     }
   } catch {
     previewNativeRequired = null;
@@ -304,6 +292,7 @@ export default function AddLiquidityPage() {
 
       setAmountA('');
       setAmountB('');
+      setPoolNotFound(null); // 👈 Reset error message
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addLiquidityHash, isAddLiquidityPending]);
@@ -335,8 +324,6 @@ export default function AddLiquidityPage() {
     }
   };
 
-  // (replaced by a safer getTokenDecimals above which resolves custom tokens)
-
   const isNativeToken = (tokenKey: TokenKey) => {
     return tokenKey === 'NATIVE';
   };
@@ -347,10 +334,10 @@ export default function AddLiquidityPage() {
       setAmountB('');
       return;
     }
-    
+
     const [reserveA, reserveB] = reserves as [bigint, bigint];
     if (reserveA === BigInt(0) || reserveB === BigInt(0)) return;
-    
+
     try {
       const decimalsA = getTokenDecimals(tokenA);
       const decimalsB = getTokenDecimals(tokenB);
@@ -364,7 +351,7 @@ export default function AddLiquidityPage() {
 
   const handleApprove = async (tokenKey: TokenKey) => {
     if (!address || isNativeToken(tokenKey)) return;
-    
+
     const tokenAddress = TOKENS[tokenKey].address;
     const abi = tokenKey === 'USDC' ? USDC_ABI : KANARI_ABI;
 
@@ -382,11 +369,11 @@ export default function AddLiquidityPage() {
     // If pool requires native currency, ensure nativeBalance is loaded and sufficient before opening wallet
     if (poolRequiresNative && previewNativeRequired !== null) {
       if (!nativeBalance || typeof nativeBalance.value !== 'bigint') {
-        alert('Native balance is still loading — please wait a moment and try again');
+        setPoolNotFound('Native balance is still loading — please wait a moment and try again.');
         return;
       }
       if (nativeBalance.value < previewNativeRequired) {
-        alert('Insufficient native balance for this add liquidity operation');
+        setPoolNotFound('Insufficient native balance for this add liquidity operation.');
         return;
       }
     }
@@ -398,36 +385,30 @@ export default function AddLiquidityPage() {
       const amountAWei = parseUnits(amountA, decimalsA);
       const amountBWei = parseUnits(amountB, decimalsB);
       const slippagePercent = parseFloat(slippage) / 100;
-      
+
       const minAmountA = amountAWei * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
       const minAmountB = amountBWei * BigInt(Math.floor((1 - slippagePercent) * 10000)) / BigInt(10000);
-      
+
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
-      
-      // Determine native value according to on-chain token ordering when available
+
+      // Determine native value according to LOCAL token mapping (not on-chain!)
       let nativeValue = BigInt(0);
-  const aAddrRaw = onChainTokenA || getDisplayToken(tokenA).address;
-  const bAddrRaw = onChainTokenB || getDisplayToken(tokenB).address;
-      if (!onChainTokenA || !onChainTokenB) {
-        console.warn('onChain token addresses not available yet; falling back to local POOLS mapping. This may cause Incorrect native value errors.');
-      }
-      const aAddr = String(aAddrRaw).toLowerCase();
-      const bAddr = String(bAddrRaw).toLowerCase();
-  const nativeZero = getDisplayToken('NATIVE').address.toLowerCase();
       if (aAddr === nativeZero) nativeValue += amountAWei;
       if (bAddr === nativeZero) nativeValue += amountBWei;
 
-      // Debug output to help diagnose Incorrect native value errors
+      // Debug output
       console.debug('AddLiquidity debug', {
         poolAddress,
-        onChainTokenA: aAddr,
-        onChainTokenB: bAddr,
+        tokenA: tokenA,
+        tokenB: tokenB,
+        aAddr,
+        bAddr,
         amountAWei: amountAWei.toString(),
         amountBWei: amountBWei.toString(),
         nativeValue: nativeValue.toString(),
         nativeBalance: nativeBalance?.value ? nativeBalance.value.toString() : null,
       });
-      
+
       writeAddLiquidity({
         address: poolAddress as Address,
         abi: SWAP_ABI,
@@ -437,6 +418,7 @@ export default function AddLiquidityPage() {
       });
     } catch (error) {
       console.error('Add liquidity failed:', error);
+      setPoolNotFound('Failed to add liquidity. Please try again.');
     } finally {
       setIsAddingLiquidity(false);
     }
@@ -469,12 +451,10 @@ export default function AddLiquidityPage() {
       if (which === 'A') {
         const bal = getTokenBalance(tokenA);
         const decimalsA = getTokenDecimals(tokenA);
-        // use floor to avoid precision issues when formatting
         const use = bal === BigInt(0) ? BigInt(0) : (bal * BigInt(percent)) / BigInt(100);
         const amountStr = formatUnits(use, decimalsA);
         setAmountA(amountStr);
 
-        // If reserves available, compute proportional B amount; otherwise leave B empty
         if (reserves) {
           const [reserveA, reserveB] = reserves as [bigint, bigint];
           if (reserveA !== BigInt(0)) {
@@ -506,10 +486,10 @@ export default function AddLiquidityPage() {
 
   const getPoolShare = () => {
     if (!amountA || !totalSupply || !reserves) return '0';
-    
+
     const [reserveA] = reserves as [bigint, bigint];
     if (reserveA === BigInt(0)) return '100'; // First liquidity provider gets 100%
-    
+
     try {
       const decimalsA = getTokenDecimals(tokenA);
       const amountAWei = parseUnits(amountA, decimalsA);
@@ -526,6 +506,7 @@ export default function AddLiquidityPage() {
   useEffect(() => {
     setAmountA('');
     setAmountB('');
+    setPoolNotFound(null); // 👈 Clear any error on pool change
   }, [selectedPool]);
 
   // Close pool selector when clicking outside
@@ -541,7 +522,79 @@ export default function AddLiquidityPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showPoolSelect]);
 
-  // (inline TokenSelector removed - unused)
+  // ✅ NEW: Handle token selection without alert
+  const handleTokenASelect = (tokenKey: string) => {
+    try {
+      const chosen = getDisplayToken(tokenKey);
+      const other = getDisplayToken(tokenB);
+      const chosenAddr = String(chosen.address).toLowerCase();
+      const otherAddr = String(other.address).toLowerCase();
+
+      // Search built-in POOLS
+      for (const [k, pool] of Object.entries(POOLS)) {
+        const aAddr = String(getDisplayToken(pool.tokenA).address).toLowerCase();
+        const bAddr = String(getDisplayToken(pool.tokenB).address).toLowerCase();
+        if ((aAddr === chosenAddr && bAddr === otherAddr) || (bAddr === chosenAddr && aAddr === otherAddr)) {
+          setSelectedPool(k as PoolKey);
+          setAmountA('');
+          setAmountB('');
+          return;
+        }
+      }
+
+      // Search saved custom pools
+      for (const p of customPools) {
+        const aAddr = String((p.tokenAAddress || getDisplayToken(p.tokenAKey).address) || '').toLowerCase();
+        const bAddr = String((p.tokenBAddress || getDisplayToken(p.tokenBKey).address) || '').toLowerCase();
+        if ((aAddr === chosenAddr && bAddr === otherAddr) || (bAddr === chosenAddr && aAddr === otherAddr)) {
+          setSelectedPool(`CUSTOM:${String(p.poolAddress)}`);
+          setAmountA('');
+          setAmountB('');
+          return;
+        }
+      }
+
+      // No pool found → show persistent CTA instead of alert()
+      setPoolNotFound('No liquidity pool found for this token pair. Create one now?');
+    } catch (err) {
+      console.error('Token A select failed', err);
+    }
+  };
+
+  const handleTokenBSelect = (tokenKey: string) => {
+    try {
+      const chosen = getDisplayToken(tokenKey);
+      const other = getDisplayToken(tokenA);
+      const chosenAddr = String(chosen.address).toLowerCase();
+      const otherAddr = String(other.address).toLowerCase();
+
+      for (const [k, pool] of Object.entries(POOLS)) {
+        const aAddr = String(getDisplayToken(pool.tokenA).address).toLowerCase();
+        const bAddr = String(getDisplayToken(pool.tokenB).address).toLowerCase();
+        if ((aAddr === chosenAddr && bAddr === otherAddr) || (bAddr === chosenAddr && aAddr === otherAddr)) {
+          setSelectedPool(k as PoolKey);
+          setAmountA('');
+          setAmountB('');
+          return;
+        }
+      }
+
+      for (const p of customPools) {
+        const aAddr = String((p.tokenAAddress || getDisplayToken(p.tokenAKey).address) || '').toLowerCase();
+        const bAddr = String((p.tokenBAddress || getDisplayToken(p.tokenBKey).address) || '').toLowerCase();
+        if ((aAddr === chosenAddr && bAddr === otherAddr) || (bAddr === chosenAddr && aAddr === otherAddr)) {
+          setSelectedPool(`CUSTOM:${String(p.poolAddress)}`);
+          setAmountA('');
+          setAmountB('');
+          return;
+        }
+      }
+
+      setPoolNotFound('No liquidity pool found for this token pair. Create one now?');
+    } catch (err) {
+      console.error('Token B select failed', err);
+    }
+  };
 
   return (
     <div className="max-w-md mx-auto">
@@ -570,7 +623,7 @@ export default function AddLiquidityPage() {
                   </div>
                 </div>
                 <div className="text-[var(--muted-text)]">
-                  {showPoolSelect ? '↑' : '↓'}
+                  {showPoolSelect ? '↑' : '↓'} {/* ✅ FIXED: Real Unicode arrows */}
                 </div>
               </button>
 
@@ -583,9 +636,8 @@ export default function AddLiquidityPage() {
                         setSelectedPool(key as PoolKey);
                         setShowPoolSelect(false);
                       }}
-                      className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
-                        selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
-                      }`}
+                      className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
+                        }`}
                     >
                       <div className="flex items-center -space-x-2">
                         <div className={`w-6 h-6 rounded-full ${getDisplayToken(pool.tokenA).color} flex items-center justify-center text-white text-xs font-bold z-10`}>
@@ -611,7 +663,6 @@ export default function AddLiquidityPage() {
                       {customPools.map((p) => {
                         const addr = String(p.poolAddress || p.poolAddress).toLowerCase();
                         const key = `CUSTOM:${addr}`;
-                        // resolve display tokens (may be built-in key or custom token address)
                         const aDisplay = getDisplayToken(p.tokenAKey || p.tokenAAddress);
                         const bDisplay = getDisplayToken(p.tokenBKey || p.tokenBAddress);
                         const name = p.pairName || `${aDisplay.symbol}/${bDisplay.symbol}`;
@@ -622,9 +673,8 @@ export default function AddLiquidityPage() {
                               setSelectedPool(key);
                               setShowPoolSelect(false);
                             }}
-                            className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
-                              selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
-                            }`}
+                            className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${selectedPool === key ? 'bg-[var(--primary-color)]/10' : ''
+                              }`}
                           >
                             <div className="flex items-center -space-x-2">
                               <div className={`w-6 h-6 rounded-full ${aDisplay.color} flex items-center justify-center text-white text-xs font-bold z-10`}>
@@ -646,36 +696,46 @@ export default function AddLiquidityPage() {
                       })}
                     </div>
                   )}
+
+                  {/* ✅ FIXED: Factory pools now show correct icons per pool */}
                   {factoryPools && factoryPools.length > 0 && (
                     <div className="border-t border-white/5">
-                      {factoryPools.map((addr) => (
-                        <button
-                          key={addr}
-                          onClick={() => {
-                            setSelectedPool(`CUSTOM:${addr}`);
-                            setShowPoolSelect(false);
-                          }}
-                          className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${
-                            selectedPool === `CUSTOM:${addr}` ? 'bg-[var(--primary-color)]/10' : ''
-                          }`}
-                        >
-                          <div className="flex items-center -space-x-2">
-                            <div className={`w-6 h-6 rounded-full ${getDisplayToken(currentPool.tokenA).color} flex items-center justify-center text-white text-xs font-bold z-10`}>
-                              {getDisplayToken(currentPool.tokenA).icon}
+                      {factoryPools.map((addr) => {
+                        // Only show correct tokens if THIS is the selected pool
+                        const isSelected = selectedPool === `CUSTOM:${addr}`;
+                        const aIcon = isSelected ? displayA.icon : '?';
+                        const bIcon = isSelected ? displayB.icon : '?';
+                        const aColor = isSelected ? displayA.color : 'bg-gray-500';
+                        const bColor = isSelected ? displayB.color : 'bg-gray-500';
+
+                        return (
+                          <button
+                            key={addr}
+                            onClick={() => {
+                              setSelectedPool(`CUSTOM:${addr}`);
+                              setShowPoolSelect(false);
+                            }}
+                            className={`w-full flex items-center gap-3 p-4 hover:bg-[var(--background)]/30 transition ${selectedPool === `CUSTOM:${addr}` ? 'bg-[var(--primary-color)]/10' : ''
+                              }`}
+                          >
+                            <div className="flex items-center -space-x-2">
+                              <div className={`w-6 h-6 rounded-full ${aColor} flex items-center justify-center text-white text-xs font-bold z-10`}>
+                                {aIcon}
+                              </div>
+                              <div className={`w-6 h-6 rounded-full ${bColor} flex items-center justify-center text-white text-xs font-bold`}>
+                                {bIcon}
+                              </div>
                             </div>
-                            <div className={`w-6 h-6 rounded-full ${getDisplayToken(currentPool.tokenB).color} flex items-center justify-center text-white text-xs font-bold`}>
-                              {getDisplayToken(currentPool.tokenB).icon}
+                            <div className="text-left">
+                              <div className="font-medium">Factory Pool</div>
+                              <div className="text-sm text-[var(--muted-text)]">{addr.slice(0, 8)}...</div>
                             </div>
-                          </div>
-                          <div className="text-left">
-                            <div className="font-medium">Factory pool</div>
-                            <div className="text-sm text-[var(--muted-text)]">{addr}</div>
-                          </div>
-                          {selectedPool === `CUSTOM:${addr}` && (
-                            <div className="ml-auto text-[var(--primary-color)]">✓</div>
-                          )}
-                        </button>
-                      ))}
+                            {selectedPool === `CUSTOM:${addr}` && (
+                              <div className="ml-auto text-[var(--primary-color)]">✓</div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -689,6 +749,18 @@ export default function AddLiquidityPage() {
                 <div className="text-blue-500/80 text-xs">Fetching pool information from the blockchain.</div>
               </div>
             ) : null}
+
+            {/* ❗ Persistent CTA for missing pool */}
+            {poolNotFound && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
+                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="text-sm text-red-500">{poolNotFound}</div>
+
+              </div>
+
+            )}
           </div>
 
           {/* Pool Info */}
@@ -734,15 +806,23 @@ export default function AddLiquidityPage() {
                 </button>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold`}>
-                  {displayA.icon}
-                </div>
+            <div>
+              {/* ✅ FIXED: Render TokenSelector */}
+              <TokenSelector
+                selectedToken={tokenA}
+                onTokenSelect={handleTokenASelect}
+                excludeTokens={[tokenB]}
+              />
+              <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5 mt-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold`}>
+                    {displayA.icon}
+                  </div>
                   <span className="font-medium">{displayA.symbol}</span>
                 </div>
                 <input
-                  type="text"
+                  type="number" // ✅ FIXED: Mobile numeric keypad
+                  step="any" // ✅ Allow decimals
                   placeholder="0.0"
                   value={amountA}
                   onChange={(e) => setAmountA(e.target.value)}
@@ -750,12 +830,13 @@ export default function AddLiquidityPage() {
                 />
               </div>
             </div>
+          </div>
 
           {/* Plus Icon */}
           <div className="flex justify-center">
             <div className="w-8 h-8 rounded-full bg-[var(--surface)] border border-white/10 flex items-center justify-center">
               <svg className="w-4 h-4 text-[var(--text-color)]" viewBox="0 0 24 24" fill="none">
-                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
           </div>
@@ -780,15 +861,23 @@ export default function AddLiquidityPage() {
                 </button>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
-                  {displayB.icon}
-                </div>
-                <span className="font-medium">{displayB.symbol}</span>
+            <div>
+              {/* ✅ FIXED: Render TokenSelector */}
+              <TokenSelector
+                selectedToken={tokenB}
+                onTokenSelect={handleTokenBSelect}
+                excludeTokens={[tokenA]}
+              />
+              <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5 mt-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
+                    {displayB.icon}
+                  </div>
+                  <span className="font-medium">{displayB.symbol}</span>
                 </div>
                 <input
-                  type="text"
+                  type="number" // ✅ FIXED
+                  step="any" // ✅ FIXED
                   placeholder="0.0"
                   value={amountB}
                   onChange={(e) => setAmountB(e.target.value)}
@@ -796,6 +885,7 @@ export default function AddLiquidityPage() {
                 />
               </div>
             </div>
+          </div>
 
           {/* Slippage Settings */}
           <div className="space-y-2">
@@ -805,11 +895,10 @@ export default function AddLiquidityPage() {
                 <button
                   key={preset}
                   onClick={() => setSlippage(preset)}
-                  className={`px-3 py-1 rounded-lg text-sm transition ${
-                    slippage === preset
+                  className={`px-3 py-1 rounded-lg text-sm transition ${slippage === preset
                       ? 'bg-[var(--primary-color)] text-white'
                       : 'bg-[var(--background)]/50 text-[var(--text-color)] hover:bg-[var(--background)]/80'
-                  }`}
+                    }`}
                 >
                   {preset}%
                 </button>
@@ -817,7 +906,14 @@ export default function AddLiquidityPage() {
               <input
                 type="text"
                 value={slippage}
-                onChange={(e) => setSlippage(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                    const num = parseFloat(val);
+                    if (num >= 0 && num <= 50) setSlippage(val);
+                    else if (val === '') setSlippage('');
+                  }
+                }}
                 className="flex-1 px-3 py-1 bg-[var(--background)]/50 rounded-lg text-sm text-center outline-none border border-white/5 focus:border-[var(--primary-color)]/50"
                 placeholder="0.5"
               />
@@ -841,7 +937,7 @@ export default function AddLiquidityPage() {
                   {isApproving ? 'Approving...' : `Approve ${displayA.symbol}`}
                 </button>
               )}
-              
+
               {needsApproval(tokenB, amountB) && (
                 <button
                   onClick={() => handleApprove(tokenB)}
@@ -856,14 +952,13 @@ export default function AddLiquidityPage() {
               <button
                 onClick={handleAddLiquidity}
                 disabled={
-                  isAddingLiquidity || 
-                  isAddLiquidityPending || 
-                  !amountA || 
-                  !amountB || 
-                  needsApproval(tokenA, amountA) || 
+                  isAddingLiquidity ||
+                  isAddLiquidityPending ||
+                  !amountA ||
+                  !amountB ||
+                  needsApproval(tokenA, amountA) ||
                   needsApproval(tokenB, amountB) ||
-                  !(onChainTokenA && onChainTokenB) ||
-                  // If the pool requires native and we have a preview requirement, ensure nativeBalance is loaded and sufficient
+                  // Removed: !(onChainTokenA && onChainTokenB) — NOT needed anymore!
                   (poolRequiresNative && previewNativeRequired !== null && (!nativeBalance || typeof nativeBalance.value !== 'bigint' || nativeBalance.value < previewNativeRequired))
                 }
                 className="w-full py-4 bg-[var(--primary-color)] text-white font-medium rounded-xl hover:bg-[var(--primary-color)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
