@@ -25,6 +25,16 @@ curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
 
+# Clone this repository (zama branch)
+```bash
+# Recommended (clone the repo and checkout the 'zama' branch)
+git clone https://github.com/jamesatomc/SwapMate.git --branch zama 
+cd SwapMate
+
+# Note: the web URL you provided (https://github.com/jamesatomc/SwapMate/tree/zama)
+# points to the 'zama' branch in the GitHub web UI; use the command above to clone it.
+```
+
 ## Common workflow
 - Build contracts
 ```bash
