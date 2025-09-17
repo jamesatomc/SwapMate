@@ -1,13 +1,13 @@
 // Contract addresses from latest deployment
 export const CONTRACTS = {
   // Token addresses
-  USDC: "0xcC11f370fe6126b36D634FC1D2CCbC1F72599199" as const,
-  KANARI: "0xcefB699Cf39C5462CaD926920f869a252FDE09EC" as const,
+  USDC: "0x45b7b270049C3a3436390728499fC5A9438b32E8" as const,
+  KANARI: "0x227e2A88c6258EADf9016a1C69c16e176A9D5490" as const,
 
   // DEX Infrastructure
-  DEX_FACTORY: "0xb24361e65059537C684014FC9aa903d60B3290dc" as const,
-  KANARI_NATIVE_POOL: "0xeD415A516A0F83e27314Ddc8fb12bB3fd572D260" as const,
-  FARMING: "0xEA4054041b1c65308a0D2F2d88DEa0f107A0c85A" as const,
+  DEX_FACTORY: "0xf393ec4e9ac8ad1f780cd7d30FFE9F7249004FB8" as const,
+  KANARI_NATIVE_POOL: "0x8B0DBa210C4d7189505A2BE400203ebCb635aC29" as const,
+  FARMING: "0x66a317555768F1CfCeb1cF962Fe1F1103eA8B143" as const,
 
 } as const;
 
@@ -17,8 +17,8 @@ export const POOLS = {
     address: CONTRACTS.KANARI_NATIVE_POOL,
     tokenA: 'NATIVE' as TokenKey,
     tokenB: 'KANARI' as TokenKey,
-    name: 'sBTC/KANARI',
-    description: 'KANARI paired with native sBTC (Dev fee: 0.1%)',
+    name: 'ETH/KANARI',
+    description: 'KANARI paired with native ETH (Dev fee: 0.1%)',
     hasFeeCollection: true,
     devFee: '0.1%',
     tradingFee: '0.3%'
@@ -32,8 +32,8 @@ export type PoolKey = keyof typeof POOLS;
 export const TOKENS = {
   NATIVE: {
     address: "0x0000000000000000000000000000000000000000" as const,
-    name: "sBTC",
-    symbol: "sBTC",
+    name: "ETH",
+    symbol: "ETH",
     decimals: 18,
     icon: "₿",
     color: "bg-orange-500"

@@ -3,10 +3,12 @@ pragma solidity ^0.8.30;
 
 import "./ConstantProductAMM.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
+import {FHE, euint64, externalEuint64} from "lib/zama-lib/src/FHE.sol";
+import {SepoliaConfig} from "lib/zama-lib/src/ZamaConfig.sol";
 
 /// @title DEX Factory - Creates and manages DEX pools
 /// @notice Factory contract for deploying new trading pairs
-contract DEXFactory is Ownable {
+contract DEXFactory is Ownable, SepoliaConfig {
     mapping(address => mapping(address => address)) public getPool;
     address[] public allPools;
     mapping(address => bool) public isPool; // track pools created by this factory
@@ -22,9 +24,63 @@ contract DEXFactory is Ownable {
     event PoolFeeRecipientUpdated(address indexed pool, address indexed newRecipient);
     event PoolFeesUpdated(address indexed pool, uint256 devFeeBps, uint256 feeBps);
 
-    constructor(address _feeRecipient) Ownable(msg.sender) {
+    constructor(address _feeRecipient) Ownable(msg.sender) SepoliaConfig() {
         require(_feeRecipient != address(0), "Invalid fee recipient");
         feeRecipient = _feeRecipient;
+    }
+
+    // Optional: Encrypted metadata per pool (example integration)
+    // This can store arbitrary encrypted values (e.g., private pool stats) as euint64
+    mapping(address => euint64) private _encryptedPoolData;
+
+    /// @notice Get encrypted metadata for a pool
+    function encryptedPoolData(address pool) external view returns (euint64) {
+        return _encryptedPoolData[pool];
+    }
+
+    /// @notice Owner-only: set encrypted metadata for a pool from external handle + proof
+    function setEncryptedPoolData(address pool, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        require(pool != address(0), "Invalid pool");
+        require(isPool[pool], "Not a valid pool");
+
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedPoolData[pool] = encrypted;
+
+        FHE.allowThis(_encryptedPoolData[pool]);
+        FHE.allow(_encryptedPoolData[pool], msg.sender);
+    }
+
+    /// @notice Owner-only: increase encrypted metadata for a pool
+    function increaseEncryptedPoolData(address pool, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        require(pool != address(0), "Invalid pool");
+        require(isPool[pool], "Not a valid pool");
+
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedPoolData[pool] = FHE.add(_encryptedPoolData[pool], encrypted);
+
+        FHE.allowThis(_encryptedPoolData[pool]);
+        FHE.allow(_encryptedPoolData[pool], msg.sender);
+    }
+
+    /// @notice Owner-only: decrease encrypted metadata for a pool
+    function decreaseEncryptedPoolData(address pool, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        require(pool != address(0), "Invalid pool");
+        require(isPool[pool], "Not a valid pool");
+
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedPoolData[pool] = FHE.sub(_encryptedPoolData[pool], encrypted);
+
+        FHE.allowThis(_encryptedPoolData[pool]);
+        FHE.allow(_encryptedPoolData[pool], msg.sender);
     }
 
     /// @notice Create a new trading pool for two tokens

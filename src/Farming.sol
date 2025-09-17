@@ -6,10 +6,12 @@ import "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/utils/Pausable.sol";
 import "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import {FHE, euint64, externalEuint64} from "lib/zama-lib/src/FHE.sol";
+import {SepoliaConfig} from "lib/zama-lib/src/ZamaConfig.sol";
 
 /// @title Farming / Staking contract for AMM LP tokens
 /// @notice Stake LP tokens (the AMM contract itself) and earn rewards in a reward token (e.g. `Kanari`).
-contract Farming is Ownable, Pausable, ReentrancyGuard {
+contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable lpToken; // LP token (the AMM contract address)
@@ -33,11 +35,99 @@ contract Farming is Ownable, Pausable, ReentrancyGuard {
     event TokenRecovered(address indexed token, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
 
-    constructor(address _lpToken, address _rewardToken) Ownable(msg.sender) {
+    constructor(address _lpToken, address _rewardToken) Ownable(msg.sender) SepoliaConfig() {
         require(_lpToken != address(0), "Invalid LP token");
         require(_rewardToken != address(0), "Invalid reward token");
         lpToken = IERC20(_lpToken);
         rewardToken = IERC20(_rewardToken);
+    }
+
+    /* ========== ENCRYPTED STATE (FHE) ========== */
+
+    // Encrypted staked balances and encrypted reward accounting (example integration)
+    mapping(address => euint64) private _encryptedStakes;
+    mapping(address => euint64) private _encryptedRewards;
+
+    /// @notice Returns the encrypted staked balance for an account
+    function encryptedStakeOf(address account) external view returns (euint64) {
+        return _encryptedStakes[account];
+    }
+
+    /// @notice Returns the encrypted accumulated rewards for an account
+    function encryptedRewardOf(address account) external view returns (euint64) {
+        return _encryptedRewards[account];
+    }
+
+    /// @notice Owner-only: set an account's encrypted stake from an external handle + proof
+    function setEncryptedStake(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedStakes[account] = encrypted;
+
+        FHE.allowThis(_encryptedStakes[account]);
+        FHE.allow(_encryptedStakes[account], account);
+    }
+
+    /// @notice Owner-only: increase an account's encrypted stake by an encrypted amount
+    function increaseEncryptedStake(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedStakes[account] = FHE.add(_encryptedStakes[account], encrypted);
+
+        FHE.allowThis(_encryptedStakes[account]);
+        FHE.allow(_encryptedStakes[account], account);
+    }
+
+    /// @notice Owner-only: decrease an account's encrypted stake by an encrypted amount
+    function decreaseEncryptedStake(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedStakes[account] = FHE.sub(_encryptedStakes[account], encrypted);
+
+        FHE.allowThis(_encryptedStakes[account]);
+        FHE.allow(_encryptedStakes[account], account);
+    }
+
+    /// @notice Owner-only: set an account's encrypted reward from an external handle + proof
+    function setEncryptedReward(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedRewards[account] = encrypted;
+
+        FHE.allowThis(_encryptedRewards[account]);
+        FHE.allow(_encryptedRewards[account], account);
+    }
+
+    /// @notice Owner-only: increase an account's encrypted reward by an encrypted amount
+    function increaseEncryptedReward(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedRewards[account] = FHE.add(_encryptedRewards[account], encrypted);
+
+        FHE.allowThis(_encryptedRewards[account]);
+        FHE.allow(_encryptedRewards[account], account);
+    }
+
+    /// @notice Owner-only: decrease an account's encrypted reward by an encrypted amount
+    function decreaseEncryptedReward(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
+        external
+        onlyOwner
+    {
+        euint64 encrypted = FHE.fromExternal(inputEuint64, inputProof);
+        _encryptedRewards[account] = FHE.sub(_encryptedRewards[account], encrypted);
+
+        FHE.allowThis(_encryptedRewards[account]);
+        FHE.allow(_encryptedRewards[account], account);
     }
 
     /* ========== VIEWS ========== */

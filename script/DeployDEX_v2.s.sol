@@ -18,6 +18,7 @@ import "src/USDC.sol";
 contract DeployDEX_v2 is Script {
     // Deployment addresses - will be set after deployment
     address public kanariToken;
+    address public usdcToken;
     address public dexFactory;
     address public kanariNativePool;
     address public farmingContract;
@@ -51,6 +52,7 @@ contract DeployDEX_v2 is Script {
 
         console.log("=== Deployment Summary ===");
         console.log("KANARI Token:", kanariToken);
+        console.log("USDC Token:", usdcToken);
         console.log("DEX Factory:", dexFactory);
         console.log("KANARI/Native Pool:", kanariNativePool);
         console.log("Farming Contract:", farmingContract);
@@ -72,6 +74,12 @@ contract DeployDEX_v2 is Script {
         // and call `fundRewards` when running with `--ledger --broadcast`.
         kanari.mint(FEE_RECIPIENT, TOTAL_REWARDS);
         console.log("Minted", TOTAL_REWARDS / 1e18, "KANARI to fee recipient for rewards");
+
+        // Deploy a USDC-like stablecoin for testing and add initial minter balance
+        USDC usdc = new USDC();
+        usdcToken = address(usdc);
+        console.log("USDC deployed at:", usdcToken);
+
     }
 
     function deployDEXFactory() internal {

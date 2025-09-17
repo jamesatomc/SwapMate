@@ -23,7 +23,7 @@ export default function MainDEX() {
             <div className="w-10 h-10 rounded-full bg-orange-400 flex items-center justify-center text-white font-bold shadow">K</div>
             <div className="flex-1">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-lg font-semibold text-[var(--text-color)]">Kanari</div>
+                <div className="text-lg font-semibold text-[var(--text-color)]">SwapMeta</div>
                 {/* on small screens place connect to the right inside same row */}
                 <div className="md:hidden">
                   <div className="rounded-lg bg-[var(--surface)] p-1 border border-white/6 shadow-sm">

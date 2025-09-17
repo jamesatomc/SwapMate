@@ -6,22 +6,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { defineChain } from 'viem';
 
-// Define Alpen Labs testnet as a custom chain
-const alpenTestnet = defineChain({
-  id: 2892,
-  name: 'Alpen Labs Testnet',
-  network: 'alpenlabs-testnet',
+// Define Ethereum Sepolia testnet as a custom chain
+const ethSepolia = defineChain({
+  id: 11155111,
+  name: 'Ethereum Sepolia',
+  network: 'sepolia',
   nativeCurrency: {
     decimals: 18,
-    name: 'sBTC',
-    symbol: 'BTC',
+    name: 'Ethereum',
+    symbol: 'ETH',
   },
   rpcUrls: {
-    default: { http: ['https://rpc.testnet.alpenlabs.io'] },
-    public: { http: ['https://rpc.testnet.alpenlabs.io'] },
+    default: { http: ['https://ethereum-sepolia-rpc.publicnode.com'] },
+    public: { http: ['https://ethereum-sepolia-rpc.publicnode.com'] },
   },
   blockExplorers: {
-    default: { name: 'Explorer', url: 'https://explorer.testnet.alpenlabs.io' },
+    default: { name: 'Explorer', url: 'https://sepolia.etherscan.io' },
   },
 });
 
@@ -29,9 +29,9 @@ const alpenTestnet = defineChain({
 const config = getDefaultConfig({
   appName: 'SM Token Interface',
   projectId: 'your-project-id', // Get from WalletConnect Cloud
-  chains: [alpenTestnet],
+  chains: [ethSepolia],
   transports: {
-    [alpenTestnet.id]: http('https://rpc.testnet.alpenlabs.io'),
+    [ethSepolia.id]: http('https://ethereum-sepolia-rpc.publicnode.com'),
   },
   ssr: true,
 });

@@ -4,10 +4,12 @@ pragma solidity ^0.8.30;
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import {FHE, euint64, externalEuint64} from "lib/zama-lib/src/FHE.sol";
+import {SepoliaConfig} from "lib/zama-lib/src/ZamaConfig.sol";
+
 /// @title Simple AMM Pool (generic token pair)
 /// @notice Single-pool constant-product AMM for any two tokens (supports native via address(0)), with LP token, add/remove liquidity and swap
-
-contract ConstantProductAMM is ReentrancyGuard {
+contract ConstantProductAMM is ReentrancyGuard, SepoliaConfig {
     using SafeERC20 for IERC20;
 
     // --- Minimal ERC20 for LP token ---

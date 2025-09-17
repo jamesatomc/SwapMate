@@ -5,17 +5,15 @@
 ### 📝 Contract Addresses
 
 #### Core Tokens
-- **KANARI Token**: `0x70C79817a33b764BC04F1c423C61d484fAE38624`
-- **USDC Token**: `0xcC11f370fe6126b36D634FC1D2CCbC1F72599199`
+- **KANARI Token**: `0x227e2A88c6258EADf9016a1C69c16e176A9D5490`
+- **USDC Token**: `0x45b7b270049C3a3436390728499fC5A9438b32E8`
 
 #### DEX Infrastructure  
-- **DEX Factory**: `0x84d549dD7006c96C8559b4b373A7653AEC9cD67e`
-- **KANARI/USDC Pool**: `0xD1bF50a5a67466c2000b3Bbe6dbF762C795CA8a5`
-- **KANARI_NATIVE_POOL**: `0x1e953FbFca405F46aa8EF3C4079F1200b4d0634b`
-- **USDC_NATIVE_POOL**: `0x5139292E4EA267fce9F60c046eB12Eb7533144E8`  
+- **DEX Factory**: `0xf393ec4e9ac8ad1f780cd7d30FFE9F7249004FB8`
+- **KANARI_NATIVE_POOL**: `0x8B0DBa210C4d7189505A2BE400203ebCb635aC29` 
 
 #### Farming & Staking
-- **Farming Contract**: `0x2e57223CDA40497e6D792ffFDB7879dD7894845d`
+- **Farming Contract**: `0x66a317555768F1CfCeb1cF962Fe1F1103eA8B143`
 
 ### ⚙️ Configuration Details
 
@@ -40,13 +38,13 @@
 
 ```bash
 # Main contracts deployment
-forge script script/DeployDEX.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
+forge script script/DeployDEX.s.sol --fork-url https://ethereum-sepolia-rpc.publicnode.com --ledger --broadcast
 
 # Factory deployment (with optimization)
-forge script script/DeployDEXFactory.s.sol --fork-url https://rpc.testnet.alpenlabs.io --ledger --broadcast
+forge script script/DeployDEX_v2.s.sol:DeployDEX_v2 --rpc-url https://ethereum-sepolia-rpc.publicnode.com --ledger --broadcast
 ```
 
 ### 🔗 Network Information
-- **Network**: Alpen Labs Testnet
-- **Chain ID**: 2892
-- **RPC URL**: https://rpc.testnet.alpenlabs.io
+- **Network**: Ethereum Sepolia
+- **Chain ID**: 11155111
+- **RPC URL**: https://ethereum-sepolia-rpc.publicnode.com
