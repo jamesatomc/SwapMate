@@ -1,0 +1,11 @@
+# Netlify config for building the Next.js frontend in the `frontend` folder
+[build]
+  base = "frontend"
+  publish = ".next"
+  command = "npm run build"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[dev]
+  # leave defaults for Netlify dev
