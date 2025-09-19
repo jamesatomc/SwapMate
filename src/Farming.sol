@@ -328,7 +328,7 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     /// @notice Returns reward rate scaled by 1e18 (tokens/sec * 1e18). Frontends should divide by 1e18 to display human-readable tokens/sec.
     /// @dev Example: 0.0317098 tokens/sec => 31709800000000000 (0.0317098 * 1e18)
     function getRewardRate() external view returns (uint256) {
-        return rewardRate;
+        return rewardRate / 1e18;
     }
 
     /// @notice Returns total reward remaining to be distributed for the current period (scaled back to token units)
@@ -337,7 +337,7 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     function getRewardForDuration() external view returns (uint256) {
         if (block.timestamp >= periodFinish) return 0;
         uint256 remaining = periodFinish - block.timestamp;
-        return rewardRate * remaining;
+        return (rewardRate * remaining) / 1e18;
     }
 
     /// @notice Expose paused state

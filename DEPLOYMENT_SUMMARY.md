@@ -5,17 +5,17 @@
 ### 📝 Contract Addresses
 
 #### Core Tokens
-- **KANARI Token**: `0xE34e4567b9327ab04b6dEAeF603b3a1F1D5Ec463`
-- **USDC Token**: `0xF24bE8Ee66452c5B579b4e615a1b56384a66ab2B`
+- **KANARI Token**: `0xd644E59B6D64e5eA67B723BD99Eb7de00417BdDf`
+- **USDC Token**: `0x5B45Cd9C1d75aF9a445bb208f294e2bF66d810B4`
 
 #### DEX Infrastructure  
-- **DEX Factory**: `0xF171A4EEe205DABd7706Dfeb9da1130834d4A735`
+- **DEX Factory**: `0x67E4a92625bc865354e94fc55B203AEFb547DE6e`
 
 #### Liquidity Pools
-- **KANARI_NATIVE_POOL**: `0xff1f2013553Abcf3E0a601b029f513AaF49067B9` 
+- **KANARI_NATIVE_POOL**: `0x8621B976717265327dE0e9bfE90Ba6aA75A7EB03` 
 
 #### Farming & Staking
-- **Farming Contract**: `0xBCe526f54e88120C91Df7097F380C0F2b09BC5D8`
+- **Farming Contract**: `0xc1Ed3D3BEe8e21C21cF1beba027b68aB35daBA81`
 
 ### ⚙️ Configuration Details
 
