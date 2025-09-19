@@ -8,7 +8,7 @@ import {SepoliaConfig} from "lib/zama-lib/src/ZamaConfig.sol";
 
 /// @title DEX Factory - Creates and manages DEX pools
 /// @notice Factory contract for deploying new trading pairs
-contract DEXFactory is Ownable, SepoliaConfig {
+contract DEXFactory is Ownable, ReentrancyGuard, SepoliaConfig {
     mapping(address => mapping(address => address)) public getPool;
     address[] public allPools;
     mapping(address => bool) public isPool; // track pools created by this factory
@@ -39,6 +39,10 @@ contract DEXFactory is Ownable, SepoliaConfig {
     }
 
     /// @notice Owner-only: set encrypted metadata for a pool from external handle + proof
+    /// @dev This can store arbitrary encrypted values (e.g., private analytics, flags, etc.)
+    /// @param pool Address of the pool
+    /// @param inputEuint64 The external encrypted value handle
+    /// @param inputProof The proof of correct encryption
     function setEncryptedPoolData(address pool, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -51,9 +55,14 @@ contract DEXFactory is Ownable, SepoliaConfig {
 
         FHE.allowThis(_encryptedPoolData[pool]);
         FHE.allow(_encryptedPoolData[pool], msg.sender);
+        FHE.allow(_encryptedPoolData[pool], pool); // allow pool to decrypt if needed
     }
 
     /// @notice Owner-only: increase encrypted metadata for a pool
+    /// @dev Adds the provided encrypted value to the stored encrypted metadata.
+    /// @param pool Address of the pool
+    /// @param inputEuint64 The external encrypted value handle to add
+    /// @param inputProof The proof of correct encryption
     function increaseEncryptedPoolData(address pool, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -66,9 +75,14 @@ contract DEXFactory is Ownable, SepoliaConfig {
 
         FHE.allowThis(_encryptedPoolData[pool]);
         FHE.allow(_encryptedPoolData[pool], msg.sender);
+        FHE.allow(_encryptedPoolData[pool], pool); // allow pool to decrypt if needed
     }
 
     /// @notice Owner-only: decrease encrypted metadata for a pool
+    /// @dev Subtracts the provided encrypted value from the stored encrypted metadata.
+    /// @param pool Address of the pool
+    /// @param inputEuint64 The external encrypted value handle to subtract
+    /// @param inputProof The proof of correct encryption
     function decreaseEncryptedPoolData(address pool, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -81,13 +95,15 @@ contract DEXFactory is Ownable, SepoliaConfig {
 
         FHE.allowThis(_encryptedPoolData[pool]);
         FHE.allow(_encryptedPoolData[pool], msg.sender);
+        FHE.allow(_encryptedPoolData[pool], pool); // allow pool to decrypt if needed
     }
 
     /// @notice Create a new trading pool for two tokens
     /// @param tokenA First token address (use address(0) for native coin)
     /// @param tokenB Second token address (use address(0) for native coin)
     /// @return pool Address of the created pool
-    function createPool(address tokenA, address tokenB) external returns (address pool) {
+    /// @dev If either token is address(0), you may attach ETH to fund the pool's native token side.
+    function createPool(address tokenA, address tokenB) external payable nonReentrant returns (address pool) {
         require(tokenA != tokenB, "Identical tokens");
         require(tokenA != address(0) || tokenB != address(0), "Both tokens cannot be zero");
 
@@ -95,11 +111,13 @@ contract DEXFactory is Ownable, SepoliaConfig {
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(getPool[token0][token1] == address(0), "Pool already exists");
 
-        // Deploy new pool - use {value: 0} if native token is involved
+        // Deploy new pool - forward ETH only when native token is involved
         ConstantProductAMM newPool;
         if (token0 == address(0) || token1 == address(0)) {
-            newPool = (new ConstantProductAMM){value: 0}(token0, token1);
+            // caller may attach ETH to seed the native side of the pool
+            newPool = (new ConstantProductAMM){value: msg.value}(token0, token1);
         } else {
+            require(msg.value == 0, "ETH not accepted for ERC20-only pools");
             newPool = new ConstantProductAMM(token0, token1);
         }
         pool = address(newPool);
@@ -128,7 +146,7 @@ contract DEXFactory is Ownable, SepoliaConfig {
     /// @notice Update default fees for new pools
     function setDefaultFees(uint256 _devFeeBps, uint256 _feeBps) external onlyOwner {
         require(_devFeeBps <= 100, "Dev fee too high"); // Max 1%
-        require(_feeBps <= 500, "Fee too high"); // Max 5%
+        require(_feeBps <= 300, "Fee too high"); // Max 3%
 
         defaultDevFeeBps = _devFeeBps;
         defaultFeeBps = _feeBps;

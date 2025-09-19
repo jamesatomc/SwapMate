@@ -34,6 +34,8 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     event RewardAdded(uint256 reward, uint256 duration);
     event TokenRecovered(address indexed token, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
+    /// @notice Emitted when a user emergency-withdraws and forfeits pending rewards.
+    event EmergencyWithdrawRewardsForgone(address indexed user, uint256 rewardsLost);
 
     constructor(address _lpToken, address _rewardToken) Ownable(msg.sender) SepoliaConfig() {
         require(_lpToken != address(0), "Invalid LP token");
@@ -59,6 +61,11 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     }
 
     /// @notice Owner-only: set an account's encrypted stake from an external handle + proof
+    /// @dev WARNING: This updates only the encrypted off-chain state and does NOT sync on-chain `_balances`.
+    ///      Keep on-chain balances in sync via separate (owner) processes if needed.
+    /// @param account The address whose encrypted stake is being set.
+    /// @param inputEuint64 External encrypted payload handle.
+    /// @param inputProof Proof validating the external encrypted payload.
     function setEncryptedStake(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -71,6 +78,10 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     }
 
     /// @notice Owner-only: increase an account's encrypted stake by an encrypted amount
+    /// @dev Similar to setEncryptedStake: this affects encrypted state only and does not modify `_balances`.
+    /// @param account The address to increase.
+    /// @param inputEuint64 External encrypted payload handle.
+    /// @param inputProof Proof validating the external encrypted payload.
     function increaseEncryptedStake(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -83,6 +94,10 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     }
 
     /// @notice Owner-only: decrease an account's encrypted stake by an encrypted amount
+    /// @dev Affects encrypted state only; ensure on-chain `_balances` are reconciled separately if needed.
+    /// @param account The address to decrease.
+    /// @param inputEuint64 External encrypted payload handle.
+    /// @param inputProof Proof validating the external encrypted payload.
     function decreaseEncryptedStake(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -95,6 +110,10 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     }
 
     /// @notice Owner-only: set an account's encrypted reward from an external handle + proof
+    /// @dev Does not alter on-chain `rewards[account]`. This is encrypted/off-chain accounting only.
+    /// @param account The address to update.
+    /// @param inputEuint64 External encrypted payload handle.
+    /// @param inputProof Proof validating the external encrypted payload.
     function setEncryptedReward(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -107,6 +126,10 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     }
 
     /// @notice Owner-only: increase an account's encrypted reward by an encrypted amount
+    /// @dev Encrypted state only; on-chain `rewards` are unchanged.
+    /// @param account The address to increase.
+    /// @param inputEuint64 External encrypted payload handle.
+    /// @param inputProof Proof validating the external encrypted payload.
     function increaseEncryptedReward(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -119,6 +142,10 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     }
 
     /// @notice Owner-only: decrease an account's encrypted reward by an encrypted amount
+    /// @dev Encrypted state only; on-chain `rewards` are unchanged.
+    /// @param account The address to decrease.
+    /// @param inputEuint64 External encrypted payload handle.
+    /// @param inputProof Proof validating the external encrypted payload.
     function decreaseEncryptedReward(address account, externalEuint64 inputEuint64, bytes calldata inputProof)
         external
         onlyOwner
@@ -221,15 +248,21 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
         uint256 amount = _balances[msg.sender];
         require(amount > 0, "No tokens to withdraw");
 
+        // capture forfeited rewards for transparency
+        uint256 rewardsLost = rewards[msg.sender];
+
         _totalSupply -= amount;
         _balances[msg.sender] = 0;
 
-        // Clear user's reward state without paying out
+        // Clear user's reward state without paying out (forfeited)
         rewards[msg.sender] = 0;
         userRewardPerTokenPaid[msg.sender] = 0;
 
         lpToken.safeTransfer(msg.sender, amount);
         emit EmergencyWithdraw(msg.sender, amount);
+        if (rewardsLost > 0) {
+            emit EmergencyWithdrawRewardsForgone(msg.sender, rewardsLost);
+        }
     }
 
     /* ========== RESTRICTED FUNCTIONS ========== */
@@ -292,17 +325,19 @@ contract Farming is Ownable, Pausable, ReentrancyGuard, SepoliaConfig {
     /// this function scales it back down. For example, if `rewardRate` is
     /// stored as `0.0317098 * 1e18` then this function returns `0.0317098 * 1e0` in
     /// token base units (still in wei for ERC20 with 18 decimals).
+    /// @notice Returns reward rate scaled by 1e18 (tokens/sec * 1e18). Frontends should divide by 1e18 to display human-readable tokens/sec.
+    /// @dev Example: 0.0317098 tokens/sec => 31709800000000000 (0.0317098 * 1e18)
     function getRewardRate() external view returns (uint256) {
-        return rewardRate / 1e18;
+        return rewardRate;
     }
 
     /// @notice Returns total reward remaining to be distributed for the current period (scaled back to token units)
+    /// @notice Returns total remaining reward for the current period, scaled by 1e18 (rewardRate * remainingSeconds).
+    /// @dev Frontends should divide the result by 1e18 to obtain token units.
     function getRewardForDuration() external view returns (uint256) {
         if (block.timestamp >= periodFinish) return 0;
-        // rewardRate is scaled by 1e18; multiply by remaining seconds then divide by 1e18
-        // Use remaining seconds from now (periodFinish - block.timestamp)
         uint256 remaining = periodFinish - block.timestamp;
-        return (rewardRate * remaining) / 1e18;
+        return rewardRate * remaining;
     }
 
     /// @notice Expose paused state

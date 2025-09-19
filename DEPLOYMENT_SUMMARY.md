@@ -5,15 +5,17 @@
 ### 📝 Contract Addresses
 
 #### Core Tokens
-- **KANARI Token**: `0x227e2A88c6258EADf9016a1C69c16e176A9D5490`
-- **USDC Token**: `0x45b7b270049C3a3436390728499fC5A9438b32E8`
+- **KANARI Token**: `0xE34e4567b9327ab04b6dEAeF603b3a1F1D5Ec463`
+- **USDC Token**: `0xF24bE8Ee66452c5B579b4e615a1b56384a66ab2B`
 
 #### DEX Infrastructure  
-- **DEX Factory**: `0xf393ec4e9ac8ad1f780cd7d30FFE9F7249004FB8`
-- **KANARI_NATIVE_POOL**: `0x8B0DBa210C4d7189505A2BE400203ebCb635aC29` 
+- **DEX Factory**: `0xF171A4EEe205DABd7706Dfeb9da1130834d4A735`
+
+#### Liquidity Pools
+- **KANARI_NATIVE_POOL**: `0xff1f2013553Abcf3E0a601b029f513AaF49067B9` 
 
 #### Farming & Staking
-- **Farming Contract**: `0x66a317555768F1CfCeb1cF962Fe1F1103eA8B143`
+- **Farming Contract**: `0xBCe526f54e88120C91Df7097F380C0F2b09BC5D8`
 
 ### ⚙️ Configuration Details
 
@@ -21,8 +23,7 @@
 - **Default DEV Fee**: 0.1% (10 basis points)
 - **Default Trading Fee**: 0.3% (30 basis points)
 - **Initial Token Supply**:
-  - KANARI: 1,000,000 tokens (minted to deployer)
-  - USDC: 100,000 tokens (minted to deployer)
+  - KANARI: 6,000,000 tokens (minted to pool)
 
 ### 🚀 Next Steps
 

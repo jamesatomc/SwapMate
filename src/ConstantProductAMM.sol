@@ -246,37 +246,52 @@ contract ConstantProductAMM is ReentrancyGuard, SepoliaConfig {
         require(tokenIn == tokenA || tokenIn == tokenB, "Invalid tokenIn");
 
         bool isA = tokenIn == tokenA;
-        (uint256 reserveA, uint256 reserveB) = getReserves();
+        uint256 reserveInBefore;
+        uint256 reserveOutBefore;
 
         // Calculate fee amount for dev wallet
         uint256 feeAmount = (amountIn * devFeeBps) / BPS;
         uint256 amountInAfterDevFee = amountIn - feeAmount;
         require(amountInAfterDevFee > 0, "Amount too small after dev fee");
 
-        // handle input transfer / native handling and adjust reserves
         if (_isNative(tokenIn)) {
+            // native input: msg.value must equal amountIn
             require(msg.value == amountIn, "Incorrect msg.value for native input");
 
-            // Send dev fee
+            // Read reserves now that msg.value has been validated (balance includes msg.value)
+            (uint256 reserveA, uint256 reserveB) = getReserves();
+            reserveInBefore = isA ? reserveA - msg.value : reserveB - msg.value; // prior reserve
+            reserveOutBefore = isA ? reserveB : reserveA;
+
+            // Send dev fee (from msg.value)
             if (feeAmount > 0 && feeRecipient != address(0)) {
                 (bool sent,) = payable(feeRecipient).call{value: feeAmount}("");
                 require(sent, "Dev fee transfer failed");
                 emit FeesCollected(feeRecipient, feeAmount, tokenIn);
             }
 
-            uint256 reserveInBefore = isA ? reserveA - amountInAfterDevFee : reserveB - amountInAfterDevFee;
-            amountOut = _calculateSwapOutput(amountInAfterDevFee, reserveInBefore, isA ? reserveB : reserveA);
+            // Compute output using reserve before the incoming amount
+            amountOut = _calculateSwapOutput(amountInAfterDevFee, reserveInBefore, reserveOutBefore);
         } else {
+            // ERC20 input: no native value expected
             require(msg.value == 0, "Unexpected native value");
+
+            // Read reserves before pulling tokens (balance does not include incoming ERC20 yet)
+            (uint256 reserveA, uint256 reserveB) = getReserves();
+            reserveInBefore = isA ? reserveA : reserveB;
+            reserveOutBefore = isA ? reserveB : reserveA;
+
+            // pull ERC20 tokens (now contract balance increases by amountIn)
             IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
 
-            // Send dev fee
+            // Send dev fee (ERC20)
             if (feeAmount > 0 && feeRecipient != address(0)) {
                 IERC20(tokenIn).safeTransfer(feeRecipient, feeAmount);
                 emit FeesCollected(feeRecipient, feeAmount, tokenIn);
             }
 
-            amountOut = _calculateSwapOutput(amountInAfterDevFee, isA ? reserveA : reserveB, isA ? reserveB : reserveA);
+            // Compute output using reserve before the incoming amount
+            amountOut = _calculateSwapOutput(amountInAfterDevFee, reserveInBefore, reserveOutBefore);
         }
 
         require(amountOut >= minAmountOut, "INSUFFICIENT_OUTPUT_AMOUNT");
@@ -364,7 +379,9 @@ contract ConstantProductAMM is ReentrancyGuard, SepoliaConfig {
         require(amountInAfterDevFee <= type(uint256).max / (BPS - feeBps), "AmountIn too large for impact calculation");
         uint256 expectedOut = (amountInAfterDevFee * (BPS - feeBps)) / BPS;
 
-        if (expectedOut == 0) return 0;
+        // If expectedOut is zero, report full impact to avoid misleading zero/overflow behaviour
+        if (expectedOut == 0) return BPS;
+
         if (expectedOut <= amountOut) return 0; // No negative impact
 
         // Check for overflow in impact calculation
@@ -401,7 +418,7 @@ contract ConstantProductAMM is ReentrancyGuard, SepoliaConfig {
 
     /// @notice Withdraw accumulated fees (emergency function)
     function withdrawFees(address token, uint256 amount) external onlyOwner {
-        require(feeRecipient != address(0), "No fee recipient set");
+        // Note: removed require(feeRecipient != address(0)) so actual transfer behavior determines success/failure
 
         if (token == address(0)) {
             // Withdraw native token
@@ -452,6 +469,9 @@ contract ConstantProductAMM is ReentrancyGuard, SepoliaConfig {
         z = (z + x / z) >> 1;
         z = (z + x / z) >> 1;
         z = (z + x / z) >> 1;
+
+        // safety: avoid division by zero
+        require(z != 0, "division by zero in sqrt");
         uint256 z2 = x / z;
         if (z2 < z) z = z2;
     }
