@@ -814,12 +814,6 @@ export default function AddLiquidityPage() {
                 excludeTokens={[tokenB]}
               />
               <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5 mt-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className={`w-8 h-8 rounded-full ${displayA.color} flex items-center justify-center text-white text-sm font-bold`}>
-                    {displayA.icon}
-                  </div>
-                  <span className="font-medium">{displayA.symbol}</span>
-                </div>
                 <input
                   type="number" // ✅ FIXED: Mobile numeric keypad
                   step="any" // ✅ Allow decimals
@@ -869,12 +863,6 @@ export default function AddLiquidityPage() {
                 excludeTokens={[tokenA]}
               />
               <div className="flex items-center gap-3 p-4 bg-[var(--background)]/50 rounded-xl border border-white/5 mt-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className={`w-8 h-8 rounded-full ${displayB.color} flex items-center justify-center text-white text-sm font-bold`}>
-                    {displayB.icon}
-                  </div>
-                  <span className="font-medium">{displayB.symbol}</span>
-                </div>
                 <input
                   type="number" // ✅ FIXED
                   step="any" // ✅ FIXED

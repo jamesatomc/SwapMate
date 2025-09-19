@@ -153,10 +153,6 @@ export default function FarmingPage() {
 
   return (
     <div className="max-w-md mx-auto space-y-6">
-      <div className="flex justify-end">
-        {/* Placeholder for potential manager toggle - kept for parity with SwapPage layout */}
-      </div>
-
       <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-[var(--text-color)]">LP Farming</h2>
