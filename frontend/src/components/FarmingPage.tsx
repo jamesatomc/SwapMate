@@ -91,9 +91,11 @@ export default function FarmingPage() {
 
   // Update state when data changes (accept zero values too)
   useEffect(() => {
-    const safeFormat = (val: any) => {
+    const safeFormat = (val: unknown): string => {
       try {
-        return formatEther(val);
+        if (val === null || val === undefined) return '0';
+        // formatEther expects bigint | number | string — cast from unknown safely for the call
+        return formatEther(val as Parameters<typeof formatEther>[0]);
       } catch {
         return '0';
       }
