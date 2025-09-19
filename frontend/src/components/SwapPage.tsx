@@ -17,7 +17,6 @@ export default function SwapPage() {
   const [amountOut, setAmountOut] = useState('');
   const [slippage, setSlippage] = useState('0.5'); // validated later
   const [isSwapping, setIsSwapping] = useState(false);
-  const [showTokenManager, setShowTokenManager] = useState(false);
   const { customTokens } = useAllTokens();
   const [priceImpact, setPriceImpact] = useState('0');
 
