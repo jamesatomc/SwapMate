@@ -79,7 +79,6 @@ contract DeployDEX_v2 is Script {
         USDC usdc = new USDC();
         usdcToken = address(usdc);
         console.log("USDC deployed at:", usdcToken);
-
     }
 
     function deployDEXFactory() internal {
