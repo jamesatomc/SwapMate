@@ -470,8 +470,8 @@ contract FarmingTest is Test {
     function testGetters() public {
         farming.fundRewards(REWARD_AMOUNT, REWARD_DURATION);
 
-        // getRewardRate() returns the internal 1e18-scaled rewardRate
-        assertEq(farming.getRewardRate(), (REWARD_AMOUNT * 1e18) / REWARD_DURATION);
+        // getRewardRate() returns the unscaled rewardRate (rewardAmount / duration)
+        assertEq(farming.getRewardRate(), REWARD_AMOUNT / REWARD_DURATION);
         assertEq(farming.getPeriodFinish(), block.timestamp + REWARD_DURATION);
     }
 }
