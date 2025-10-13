@@ -42,7 +42,7 @@ export const TOKENS = {
     address: CONTRACTS.USDC,
     name: "USD Coin",
     symbol: "USDC",
-    decimals: 18,
+    decimals: 6,
     icon: "U",
     color: "bg-blue-500"
   },

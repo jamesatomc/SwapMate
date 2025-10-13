@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatUnits, parseUnits, Address } from 'viem';
-import { CONTRACTS, USDC_ABI, KANARI_ABI } from '@/lib/contracts';
+import { CONTRACTS, USDC_ABI, KANARI_ABI, TOKENS } from '@/lib/contracts';
 
 export default function MintPage() {
   const { address, isConnected } = useAccount();
@@ -54,7 +54,8 @@ export default function MintPage() {
 
     setIsMinting(true);
     try {
-      const mintAmountWei = parseUnits(mintAmount, 18);
+      const decimals = selectedToken === 'USDC' ? Number(TOKENS.USDC.decimals) : Number(TOKENS.KANARI.decimals);
+      const mintAmountWei = parseUnits(mintAmount, decimals);
       const tokenAddress = selectedToken === 'USDC' ? CONTRACTS.USDC : CONTRACTS.KANARI;
       const abi = selectedToken === 'USDC' ? USDC_ABI : KANARI_ABI;
 
@@ -73,12 +74,14 @@ export default function MintPage() {
 
   const getBalance = (token: 'USDC' | 'KANARI') => {
     const balance = token === 'USDC' ? usdcBalance : kanariBalance;
-    return balance ? formatUnits(balance, 18) : '0';
+    const decimals = token === 'USDC' ? Number(TOKENS.USDC.decimals) : Number(TOKENS.KANARI.decimals);
+    return balance ? formatUnits(balance, decimals) : '0';
   };
 
   const getTotalSupply = (token: 'USDC' | 'KANARI') => {
     const supply = token === 'USDC' ? usdcTotalSupply : kanariTotalSupply;
-    return supply ? formatUnits(supply, 18) : '0';
+    const decimals = token === 'USDC' ? Number(TOKENS.USDC.decimals) : Number(TOKENS.KANARI.decimals);
+    return supply ? formatUnits(supply, decimals) : '0';
   };
 
   const presetAmounts = ['10', '100', '1000', '10000'];

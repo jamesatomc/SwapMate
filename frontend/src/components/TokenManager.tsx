@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useReadContract } from 'wagmi';
 import { Address, isAddress } from 'viem';
+import { CONTRACTS } from '@/lib/contracts';
 
 // Basic ERC20 ABI for token validation
 const ERC20_ABI = [
@@ -10,21 +11,21 @@ const ERC20_ABI = [
     "type": "function",
     "name": "name",
     "inputs": [],
-    "outputs": [{"type": "string", "name": ""}],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function", 
-    "name": "symbol",
-    "inputs": [],
-    "outputs": [{"type": "string", "name": ""}],
+    "outputs": [{ "type": "string", "name": "" }],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "decimals", 
+    "name": "symbol",
     "inputs": [],
-    "outputs": [{"type": "uint8", "name": ""}],
+    "outputs": [{ "type": "string", "name": "" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "decimals",
+    "inputs": [],
+    "outputs": [{ "type": "uint8", "name": "" }],
     "stateMutability": "view"
   }
 ] as const;
@@ -77,7 +78,15 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
     const stored = localStorage.getItem('customTokens');
     if (stored) {
       try {
-        setCustomTokens(JSON.parse(stored));
+        const parsed: CustomToken[] = JSON.parse(stored);
+        // normalize decimals for stored tokens (ensure number type)
+        const normalized = parsed.map(t => ({
+          ...t,
+          decimals: t.decimals !== undefined && t.decimals !== null
+            ? Number(t.decimals)
+            : (t.address?.toLowerCase() === CONTRACTS.USDC.toLowerCase() ? 6 : 18)
+        }));
+        setCustomTokens(normalized);
       } catch (e) {
         console.error('Error loading custom tokens:', e);
       }
@@ -101,8 +110,15 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
 
   // Save custom tokens to localStorage
   const saveCustomTokens = (tokens: CustomToken[]) => {
-    localStorage.setItem('customTokens', JSON.stringify(tokens));
-    setCustomTokens(tokens);
+    // normalize decimals before saving
+    const normalized = tokens.map(t => ({
+      ...t,
+      decimals: t.decimals !== undefined && t.decimals !== null
+        ? Number(t.decimals)
+        : (t.address?.toLowerCase() === CONTRACTS.USDC.toLowerCase() ? 6 : 18)
+    }));
+    localStorage.setItem('customTokens', JSON.stringify(normalized));
+    setCustomTokens(normalized);
   };
 
   // Notify other components that custom tokens updated
@@ -152,15 +168,15 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
       address: tokenAddress,
       name: tokenName as string,
       symbol: tokenSymbol as string,
-      decimals: tokenDecimals as number,
+      decimals: tokenDecimals !== undefined && tokenDecimals !== null ? Number(tokenDecimals) : (tokenAddress.toLowerCase() === CONTRACTS.USDC.toLowerCase() ? 6 : 18),
       icon: (tokenSymbol as string).charAt(0).toUpperCase(),
       color: generateTokenColor()
     };
 
     const updatedTokens = [...customTokens, newToken];
-  saveCustomTokens(updatedTokens);
-  notifyCustomTokensUpdated();
-    
+    saveCustomTokens(updatedTokens);
+    notifyCustomTokensUpdated();
+
     if (onTokenAdded) {
       onTokenAdded(newToken);
     }
@@ -174,8 +190,8 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
   // Remove token
   const handleRemoveToken = (address: string) => {
     const updatedTokens = customTokens.filter(t => t.address.toLowerCase() !== address.toLowerCase());
-  saveCustomTokens(updatedTokens);
-  notifyCustomTokensUpdated();
+    saveCustomTokens(updatedTokens);
+    notifyCustomTokensUpdated();
   };
 
   // Token validation effect
@@ -183,7 +199,7 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
     if (tokenAddress && isAddress(tokenAddress)) {
       setIsValidating(true);
       setValidationError('');
-      
+
       const timer = setTimeout(() => {
         if (nameError || symbolError || decimalsError) {
           setValidationError('Invalid token contract');
@@ -301,7 +317,7 @@ export default function TokenManager({ onTokenAdded, onClose }: TokenManagerProp
       {/* Custom Tokens List */}
       <div className="space-y-3">
         <h3 className="text-lg font-semibold text-[var(--text-color)]">Custom Tokens</h3>
-        
+
         {customTokens.length === 0 ? (
           <div className="text-center py-8 text-[var(--muted-text)]">
             <div className="w-16 h-16 mx-auto mb-4 bg-[var(--background)]/50 rounded-full flex items-center justify-center">

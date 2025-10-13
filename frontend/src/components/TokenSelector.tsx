@@ -43,7 +43,7 @@ export default function TokenSelector({
           address: token.address,
           name: token.name,
           symbol: token.symbol,
-          decimals: token.decimals,
+          decimals: Number(token.decimals),
           icon: token.icon,
           color: token.color
         }
@@ -56,7 +56,7 @@ export default function TokenSelector({
           address: token.address,
           name: token.name,
           symbol: token.symbol,
-          decimals: token.decimals,
+          decimals: token.decimals !== undefined && token.decimals !== null ? Number(token.decimals) : 6,
           icon: token.icon || token.symbol.charAt(0).toUpperCase(),
           color: token.color
         }
@@ -239,7 +239,7 @@ export function getTokenInfo(tokenKeyOrAddress: string, customTokens: CustomToke
       address: token.address,
       name: token.name,
       symbol: token.symbol,
-      decimals: token.decimals,
+      decimals: Number(token.decimals),
       icon: token.icon,
       color: token.color
     };
@@ -255,7 +255,7 @@ export function getTokenInfo(tokenKeyOrAddress: string, customTokens: CustomToke
       address: customToken.address,
       name: customToken.name,
       symbol: customToken.symbol,
-      decimals: customToken.decimals,
+      decimals: customToken.decimals !== undefined && customToken.decimals !== null ? Number(customToken.decimals) : 6,
       icon: customToken.icon || customToken.symbol.charAt(0).toUpperCase(),
       color: customToken.color
     };

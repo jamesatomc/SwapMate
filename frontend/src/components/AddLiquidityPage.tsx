@@ -83,8 +83,9 @@ export default function AddLiquidityPage() {
   const { customTokens } = useAllTokens();
   // Helper to resolve a display token object (works for built-in TOKENS and custom tokens saved to localStorage)
   const getDisplayToken = React.useCallback((keyOrAddress?: string) => {
-    // Default fallback display
-    const fallback = { address: '', name: '', symbol: keyOrAddress || 'TOKEN', decimals: 18, icon: (keyOrAddress ? String(keyOrAddress).charAt(0).toUpperCase() : '?'), color: 'bg-gray-400' };
+    // Default fallback display - prefer USDC's 6 decimals when address matches, otherwise 18
+    const isUsdc = !!keyOrAddress && String(keyOrAddress).toLowerCase() === String(CONTRACTS.USDC).toLowerCase();
+    const fallback = { address: '', name: '', symbol: keyOrAddress || 'TOKEN', decimals: isUsdc ? 6 : 18, icon: (keyOrAddress ? String(keyOrAddress).charAt(0).toUpperCase() : '?'), color: 'bg-gray-400' };
 
     if (!keyOrAddress) return fallback;
 
@@ -359,7 +360,8 @@ export default function AddLiquidityPage() {
       address: tokenAddress,
       abi,
       functionName: 'approve',
-      args: [poolAddress as Address, parseUnits('1000000', 18)], // Approve large amount
+      // Approve a large amount using the token's decimals (handles USDC with 6 decimals)
+      args: [poolAddress as Address, parseUnits('1000000', getTokenDecimals(tokenKey))],
     });
   };
 
