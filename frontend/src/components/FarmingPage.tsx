@@ -16,6 +16,8 @@ export default function FarmingPage() {
   const [rewardRate, setRewardRate] = useState('0');
   const [periodFinish, setPeriodFinish] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [allowance, setAllowance] = useState('0');
+  const [lastAction, setLastAction] = useState<string | null>(null); // 'approve'|'stake'|...
 
   const { writeContract, data: hash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -72,23 +74,58 @@ export default function FarmingPage() {
     functionName: 'isPaused',
   });
 
-  // Update state when data changes
+  // Read allowance for LP token (owner = user, spender = farming contract)
+  const { data: allowanceData } = useReadContract({
+    address: CONTRACTS.KANARI_NATIVE_POOL,
+    abi: SWAP_ABI,
+    functionName: 'allowance',
+    args: address ? [address, CONTRACTS.FARMING] : undefined,
+    // ...optional: watch: true if your wagmi supports it...
+  });
+
+  // helper: safely parse floats and avoid NaN
+  const safeParse = (v: string) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // Update state when data changes (accept zero values too)
   useEffect(() => {
-    if (lpBalanceData) setLpBalance(formatEther(lpBalanceData));
-    if (stakedData) setStakedBalance(formatEther(stakedData));
-    if (earnedData) setEarnedRewards(formatEther(earnedData));
-  if (totalStakedData) setTotalStaked(formatEther(totalStakedData));
-  // getRewardRate() returns the token/sec value already scaled to token units
-  // but it's still a BigInt in wei-style units; formatEther will convert to decimal
-  if (rewardRateData) setRewardRate(formatEther(rewardRateData));
-    if (periodFinishData) setPeriodFinish(Number(periodFinishData));
-    if (pausedData !== undefined) setIsPaused(pausedData);
-  }, [lpBalanceData, stakedData, earnedData, totalStakedData, rewardRateData, periodFinishData, pausedData]);
+    const safeFormat = (val: unknown): string => {
+      try {
+        if (val === null || val === undefined) return '0';
+        // formatEther expects bigint | number | string — cast from unknown safely for the call
+        return formatEther(val as Parameters<typeof formatEther>[0]);
+      } catch {
+        return '0';
+      }
+    };
+
+    if (lpBalanceData !== undefined && lpBalanceData !== null) setLpBalance(safeFormat(lpBalanceData));
+    if (stakedData !== undefined && stakedData !== null) setStakedBalance(safeFormat(stakedData));
+    if (earnedData !== undefined && earnedData !== null) setEarnedRewards(safeFormat(earnedData));
+    if (totalStakedData !== undefined && totalStakedData !== null) setTotalStaked(safeFormat(totalStakedData));
+    if (rewardRateData !== undefined && rewardRateData !== null) setRewardRate(safeFormat(rewardRateData));
+    if (periodFinishData !== undefined && periodFinishData !== null) setPeriodFinish(Number(periodFinishData));
+    if (pausedData !== undefined && pausedData !== null) setIsPaused(Boolean(pausedData));
+
+    // new: update allowance when read returns
+    if (allowanceData !== undefined && allowanceData !== null) setAllowance(safeFormat(allowanceData));
+  }, [lpBalanceData, stakedData, earnedData, totalStakedData, rewardRateData, periodFinishData, pausedData, allowanceData]);
+
+  // clear inputs on confirmed transaction
+  useEffect(() => {
+    if (isConfirmed) {
+      setStakeAmount('');
+      setWithdrawAmount('');
+      setLastAction(null); // clear tracked action after confirm
+    }
+  }, [isConfirmed]);
 
   // Approve LP tokens for staking (KANARI/Native LP)
   const handleApprove = async () => {
     if (!stakeAmount) return;
-    
+    setLastAction('approve');
     writeContract({
       address: CONTRACTS.KANARI_NATIVE_POOL,
       abi: SWAP_ABI,
@@ -100,7 +137,7 @@ export default function FarmingPage() {
   // Stake LP tokens
   const handleStake = async () => {
     if (!stakeAmount) return;
-    
+    setLastAction('stake');
     writeContract({
       address: CONTRACTS.FARMING,
       abi: FARMING_ABI,
@@ -112,7 +149,7 @@ export default function FarmingPage() {
   // Withdraw LP tokens
   const handleWithdraw = async () => {
     if (!withdrawAmount) return;
-    
+
     writeContract({
       address: CONTRACTS.FARMING,
       abi: FARMING_ABI,
@@ -146,17 +183,16 @@ export default function FarmingPage() {
   const daysRemaining = Math.floor(timeRemaining / 86400);
   const hoursRemaining = Math.floor((timeRemaining % 86400) / 3600);
 
-  // Calculate APR (rough estimate)
-  const totalStakedNum = parseFloat(totalStaked);
-  const rewardRateNum = parseFloat(rewardRate);
+  // Calculate APR (rough estimate) using safeParse
+  const totalStakedNum = safeParse(totalStaked);
+  const rewardRateNum = safeParse(rewardRate);
   const aprEstimate = totalStakedNum > 0 ? (rewardRateNum * 86400 * 365 * 100) / totalStakedNum : 0;
+
+  // Determine if allowance covers the desired stake amount
+  const hasApproval = safeParse(allowance) >= safeParse(stakeAmount) && safeParse(stakeAmount) > 0;
 
   return (
     <div className="max-w-md mx-auto space-y-6">
-      <div className="flex justify-end">
-        {/* Placeholder for potential manager toggle - kept for parity with SwapPage layout */}
-      </div>
-
       <div className="bg-[var(--surface)] rounded-2xl border border-white/10 p-6 shadow-xl">
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-[var(--text-color)]">LP Farming</h2>
@@ -166,11 +202,11 @@ export default function FarmingPage() {
           <div className="flex justify-between items-center p-3 bg-[var(--background)]/30 rounded-lg border border-white/5">
             <div>
               <div className="text-xs text-[var(--muted-text)]">Total Staked</div>
-              <div className="text-lg font-medium">{parseFloat(totalStaked).toFixed(4)} LP</div>
+              <div className="text-lg font-medium">{safeParse(totalStaked).toFixed(4)} LP</div>
             </div>
             <div className="text-right">
               <div className="text-xs text-[var(--muted-text)]">Reward Rate</div>
-              <div className="text-lg font-medium text-orange-600">{parseFloat(rewardRate).toFixed(6)}</div>
+              <div className="text-lg font-medium text-orange-600">{safeParse(rewardRate).toFixed(6)}</div>
             </div>
           </div>
 
@@ -193,18 +229,46 @@ export default function FarmingPage() {
               <div className="flex items-center gap-3 p-3 bg-[var(--background)]/50 rounded-xl border border-white/5">
                 <input
                   type="number"
+                  min="0"
+                  step="any"
                   value={stakeAmount}
                   onChange={(e) => setStakeAmount(e.target.value)}
                   placeholder="0.0"
                   className="w-full bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
                   disabled={isPaused}
                 />
-                <button onClick={() => setStakeAmount(lpBalance)} className="px-3 py-1 bg-[var(--background)]/50 rounded text-sm">Max</button>
+                <button onClick={() => setStakeAmount(lpBalance || '0')} className="px-3 py-1 bg-[var(--background)]/50 rounded text-sm">Max</button>
               </div>
 
               <div className="flex gap-2">
-                <button onClick={handleApprove} disabled={!stakeAmount || isPending || isConfirming || isPaused} className="flex-1 py-3 bg-[var(--primary-color)] text-white font-medium rounded-lg hover:bg-[var(--primary-color)]/80 transition">Approve</button>
-                <button onClick={handleStake} disabled={!stakeAmount || isPending || isConfirming || isPaused} className="flex-1 py-3 bg-[var(--primary-color)]/80 text-white font-medium rounded-lg hover:bg-[var(--primary-color)]/80 transition">Stake</button>
+                <button
+                  onClick={handleApprove}
+                  disabled={
+                    isPending && lastAction !== 'approve' // another tx in flight
+                    ||
+                    isPaused
+                    ||
+                    safeParse(stakeAmount) <= 0
+                    ||
+                    hasApproval // already approved for this amount
+                  }
+                  className={`flex-1 py-3 ${hasApproval ? 'bg-green-600' : 'bg-[var(--primary-color)]'} text-white font-medium rounded-lg hover:opacity-90 transition`}
+                >
+                  {isPending && lastAction === 'approve' ? 'Approving...' : hasApproval ? 'Approved' : 'Approve'}
+                </button>
+                <button
+                  onClick={handleStake}
+                  disabled={
+                    !hasApproval ||
+                    isPending ||
+                    isConfirming ||
+                    isPaused ||
+                    safeParse(stakeAmount) <= 0
+                  }
+                  className="flex-1 py-3 bg-[var(--primary-color)]/80 text-white font-medium rounded-lg hover:bg-[var(--primary-color)]/80 transition"
+                >
+                  Stake
+                </button>
               </div>
             </div>
 
@@ -214,11 +278,11 @@ export default function FarmingPage() {
               <div className="p-3 bg-[var(--background)]/30 rounded-xl border border-white/5">
                 <div className="flex justify-between text-sm mb-2">
                   <span>Staked</span>
-                  <span>{parseFloat(stakedBalance).toFixed(6)} LP</span>
+                  <span>{safeParse(stakedBalance).toFixed(6)} LP</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Earned</span>
-                  <span className="text-orange-600">{parseFloat(earnedRewards).toFixed(6)} KANARI</span>
+                  <span className="text-orange-600">{safeParse(earnedRewards).toFixed(6)} KANARI</span>
                 </div>
               </div>
 
@@ -226,18 +290,38 @@ export default function FarmingPage() {
               <div className="flex items-center gap-3 p-3 bg-[var(--background)]/50 rounded-xl border border-white/5">
                 <input
                   type="number"
+                  min="0"
+                  step="any"
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
                   placeholder="0.0"
                   className="w-full bg-transparent text-right text-lg font-medium placeholder-[var(--muted-text)] outline-none"
                 />
-                <button onClick={() => setWithdrawAmount(stakedBalance)} className="px-3 py-1 bg-[var(--background)]/50 rounded text-sm">Max</button>
+                <button onClick={() => setWithdrawAmount(stakedBalance || '0')} className="px-3 py-1 bg-[var(--background)]/50 rounded text-sm">Max</button>
               </div>
 
               <div className="flex gap-2">
-                <button onClick={handleWithdraw} disabled={!withdrawAmount || isPending || isConfirming} className="flex-1 py-3 bg-gray-600 text-white font-medium rounded-lg">Withdraw</button>
-                <button onClick={handleClaim} disabled={isPending || isConfirming || parseFloat(earnedRewards) === 0} className="flex-1 py-3 bg-green-600 text-white font-medium rounded-lg">Claim</button>
-                <button onClick={handleExit} disabled={isPending || isConfirming || parseFloat(stakedBalance) === 0} className="flex-1 py-3 bg-red-600 text-white font-medium rounded-lg">Exit</button>
+                <button
+                  onClick={handleWithdraw}
+                  disabled={!withdrawAmount || isPending || isConfirming || safeParse(withdrawAmount) <= 0}
+                  className="flex-1 py-3 bg-gray-600 text-white font-medium rounded-lg"
+                >
+                  Withdraw
+                </button>
+                <button
+                  onClick={handleClaim}
+                  disabled={isPending || isConfirming || safeParse(earnedRewards) <= 0}
+                  className="flex-1 py-3 bg-green-600 text-white font-medium rounded-lg"
+                >
+                  Claim
+                </button>
+                <button
+                  onClick={handleExit}
+                  disabled={isPending || isConfirming || safeParse(stakedBalance) <= 0}
+                  className="flex-1 py-3 bg-red-600 text-white font-medium rounded-lg"
+                >
+                  Exit
+                </button>
               </div>
             </div>
           </div>
